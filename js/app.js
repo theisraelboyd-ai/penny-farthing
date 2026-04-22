@@ -10,6 +10,7 @@ import { renderTransactions } from './views/transactions.js';
 import { renderAddTransaction } from './views/add-transaction.js';
 import { renderSettings } from './views/settings.js';
 import { renderTax } from './views/tax.js';
+import { renderImport } from './views/import.js';
 import { get, put } from './storage/indexeddb.js';
 
 /* ============================================================
@@ -57,6 +58,7 @@ registerRoute('/dashboard',     renderDashboard);
 registerRoute('/holdings',      renderHoldings);
 registerRoute('/transactions',  renderTransactions);
 registerRoute('/add',           renderAddTransaction);
+registerRoute('/import',        renderImport);
 registerRoute('/tax',           renderTax);
 registerRoute('/settings',      renderSettings);
 

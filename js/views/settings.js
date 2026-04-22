@@ -326,12 +326,17 @@ function renderBackupSection() {
 function renderDeveloperSection() {
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
-      el('h2', {}, 'Test & reset'),
-      el('span', { class: 'ledger-page__folio' }, 'Sample data'),
+      el('h2', {}, 'Import & test'),
+      el('span', { class: 'ledger-page__folio' }, 'Tools'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
-      'Load a realistic sample dataset to see the engine in action, or clear all data to start fresh.'),
+      'Import trades from a broker CSV, load test data, or wipe everything and start fresh.'),
   );
+
+  const importBtn = el('button', { class: 'button' }, 'Import from IBKR CSV');
+  importBtn.addEventListener('click', () => {
+    location.hash = '#/import';
+  });
 
   const loadBtn = el('button', { class: 'button button--ghost' }, 'Load sample data');
   loadBtn.addEventListener('click', async () => {
@@ -342,6 +347,18 @@ function renderDeveloperSection() {
       setTimeout(() => location.reload(), 600);
     } catch (err) {
       console.error(err);
+      toast(`Failed: ${err.message}`, { error: true });
+    }
+  });
+
+  const clearSampleBtn = el('button', { class: 'button button--ghost' }, 'Clear sample data only');
+  clearSampleBtn.addEventListener('click', async () => {
+    if (!confirm('Remove all accounts, assets, and transactions marked as "(sample)"?\n\nYour real data will be preserved.')) return;
+    try {
+      const removed = await clearSampleData();
+      toast(`Removed ${removed.accounts} accounts, ${removed.assets} assets, ${removed.transactions} transactions`);
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
       toast(`Failed: ${err.message}`, { error: true });
     }
   });
@@ -360,11 +377,46 @@ function renderDeveloperSection() {
   });
 
   page.append(
-    el('div', { class: 'button-row' }, loadBtn, clearBtn),
+    el('div', { class: 'button-row' }, importBtn, loadBtn, clearSampleBtn, clearBtn),
     el('p', { class: 'form-group__hint', style: { marginTop: 'var(--space-4)' } },
-      'The sample dataset includes US shares in USD (to test FX), LSE shares in GBX, a gold-bar lump-sum sale scenario, and a disposal that triggers the 30-day bed-and-breakfast rule.'),
+      'Import supports IBKR Activity Statement CSVs. Duplicates are auto-detected and pre-deselected.'),
   );
   return page;
+}
+
+async function clearSampleData() {
+  const { getAll, remove } = await import('../storage/indexeddb.js');
+  const accounts = await getAll('accounts');
+  const sampleAccountIds = new Set(
+    accounts.filter((a) => /\(sample\)/i.test(a.name || '')).map((a) => a.id)
+  );
+  const txns = await getAll('transactions');
+  const sampleAssetIds = new Set();
+  let removedTxns = 0;
+  for (const t of txns) {
+    if (sampleAccountIds.has(t.accountId)) {
+      sampleAssetIds.add(t.assetId);
+      await remove('transactions', t.id);
+      removedTxns++;
+    }
+  }
+  // Remove assets that were ONLY used by sample accounts (keep assets that real
+  // transactions also reference)
+  const remainingTxns = await getAll('transactions');
+  const stillUsed = new Set(remainingTxns.map((t) => t.assetId));
+  let removedAssets = 0;
+  for (const assetId of sampleAssetIds) {
+    if (!stillUsed.has(assetId)) {
+      await remove('assets', assetId);
+      removedAssets++;
+    }
+  }
+  let removedAccounts = 0;
+  for (const accId of sampleAccountIds) {
+    await remove('accounts', accId);
+    removedAccounts++;
+  }
+  return { accounts: removedAccounts, assets: removedAssets, transactions: removedTxns };
 }
 
 async function loadSampleData() {

@@ -3,7 +3,7 @@
  * On fetch, try cache first for shell files, network first for API calls.
  */
 
-const CACHE_NAME = 'penny-farthing-v7';
+const CACHE_NAME = 'penny-farthing-v8';
 const SHELL = [
   './',
   './index.html',
@@ -25,13 +25,16 @@ const SHELL = [
   './js/views/holdings.js',
   './js/views/transactions.js',
   './js/views/add-transaction.js',
+  './js/views/import.js',
   './js/views/settings.js',
   './js/engine/pool.js',
   './js/engine/portfolio.js',
   './js/engine/fx.js',
   './js/engine/prices.js',
   './js/engine/sell-now.js',
-  './js/visual/glyphs.js'
+  './js/visual/glyphs.js',
+  './js/importers/csv.js',
+  './js/importers/ibkr.js'
 ];
 
 self.addEventListener('install', (event) => {
