@@ -32,6 +32,7 @@ export async function renderSettings(mount) {
     renderConnectionsSection(settings),
     await renderAccountsSection(),
     renderBackupSection(),
+    renderDeveloperSection(),
     renderAboutSection(),
   );
 }
@@ -320,6 +321,134 @@ function renderBackupSection() {
     el('div', { class: 'button-row' }, exportBtn, importBtn, importInput),
   );
   return page;
+}
+
+function renderDeveloperSection() {
+  const page = el('section', { class: 'ledger-page' },
+    el('div', { class: 'ledger-page__heading' },
+      el('h2', {}, 'Test & reset'),
+      el('span', { class: 'ledger-page__folio' }, 'Sample data'),
+    ),
+    el('p', { class: 'ledger-page__subtitle' },
+      'Load a realistic sample dataset to see the engine in action, or clear all data to start fresh.'),
+  );
+
+  const loadBtn = el('button', { class: 'button button--ghost' }, 'Load sample data');
+  loadBtn.addEventListener('click', async () => {
+    if (!confirm('Add sample accounts, assets, and ~15 transactions to your ledger?\n\nThis does NOT overwrite your existing data — it adds alongside.')) return;
+    try {
+      await loadSampleData();
+      toast('Sample data loaded');
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      console.error(err);
+      toast(`Failed: ${err.message}`, { error: true });
+    }
+  });
+
+  const clearBtn = el('button', { class: 'button button--danger' }, 'Clear ALL data');
+  clearBtn.addEventListener('click', async () => {
+    if (!confirm('This will DELETE all transactions, assets, accounts, and settings.\n\nAre you absolutely sure?')) return;
+    if (!confirm('Last chance — this cannot be undone.\n\nExport a backup first if you want to keep anything.')) return;
+    try {
+      await clearAllData();
+      toast('All data cleared');
+      setTimeout(() => location.reload(), 600);
+    } catch (err) {
+      toast(`Failed: ${err.message}`, { error: true });
+    }
+  });
+
+  page.append(
+    el('div', { class: 'button-row' }, loadBtn, clearBtn),
+    el('p', { class: 'form-group__hint', style: { marginTop: 'var(--space-4)' } },
+      'The sample dataset includes US shares in USD (to test FX), LSE shares in GBX, a gold-bar lump-sum sale scenario, and a disposal that triggers the 30-day bed-and-breakfast rule.'),
+  );
+  return page;
+}
+
+async function loadSampleData() {
+  const { put, uuid } = await import('../storage/indexeddb.js');
+
+  // Accounts
+  const ibkrGia = { id: uuid(), name: 'IBKR GIA (sample)', platform: 'ibkr', wrapper: 'GIA', baseCurrency: 'USD', createdAt: new Date().toISOString() };
+  const ibkrIsa = { id: uuid(), name: 'IBKR ISA (sample)', platform: 'ibkr', wrapper: 'ISA', baseCurrency: 'GBP', createdAt: new Date().toISOString() };
+  const etoro   = { id: uuid(), name: 'eToro (sample)',    platform: 'etoro', wrapper: 'GIA', baseCurrency: 'USD', createdAt: new Date().toISOString() };
+  const bullion = { id: uuid(), name: 'Bullion (sample)',  platform: 'bullion-by-post', wrapper: 'UNWRAPPED', baseCurrency: 'GBP', createdAt: new Date().toISOString() };
+
+  await put('accounts', ibkrGia);
+  await put('accounts', ibkrIsa);
+  await put('accounts', etoro);
+  await put('accounts', bullion);
+
+  // Assets
+  const rgti = { id: uuid(), type: 'equity', ticker: 'RGTI', name: 'Rigetti Computing',
+    baseCurrency: 'USD', exchange: 'NASDAQ', meta: {} };
+  const aapl = { id: uuid(), type: 'equity', ticker: 'AAPL', name: 'Apple Inc.',
+    baseCurrency: 'USD', exchange: 'NASDAQ', meta: {} };
+  const vusa = { id: uuid(), type: 'etf', ticker: 'VUSA.L', name: 'Vanguard S&P 500 UCITS ETF',
+    baseCurrency: 'GBX', exchange: 'LSE', meta: { reportingStatus: 'reporting' } };
+  const bar20a = { id: uuid(), type: 'gold-physical', ticker: 'AU-20G-A', name: '20g gold bar #A',
+    baseCurrency: 'GBP', meta: { subType: 'bullion-bar', weightGrams: 20, purity: '24ct (99.99%)' } };
+  const bar20b = { id: uuid(), type: 'gold-physical', ticker: 'AU-20G-B', name: '20g gold bar #B',
+    baseCurrency: 'GBP', meta: { subType: 'bullion-bar', weightGrams: 20, purity: '24ct (99.99%)' } };
+  const bar20c = { id: uuid(), type: 'gold-physical', ticker: 'AU-20G-C', name: '20g gold bar #C',
+    baseCurrency: 'GBP', meta: { subType: 'bullion-bar', weightGrams: 20, purity: '24ct (99.99%)' } };
+  const barOz  = { id: uuid(), type: 'gold-physical', ticker: 'AU-1OZ',  name: '1oz gold bar',
+    baseCurrency: 'GBP', meta: { subType: 'bullion-bar', weightGrams: 31.1, purity: '24ct (99.99%)' } };
+
+  for (const a of [rgti, aapl, vusa, bar20a, bar20b, bar20c, barOz]) await put('assets', a);
+
+  // Transactions — realistic scenarios
+  const txn = (date, type, asset, account, qty, price, currency, fxRate, fees = 0, notes = '') => ({
+    id: uuid(), date, type, assetId: asset.id, accountId: account.id,
+    quantity: qty, pricePerUnit: price, currency, fxRate, fees,
+    taxYear: ukTaxYear(date), notes, createdAt: new Date().toISOString(),
+  });
+
+  const txns = [
+    // Rigetti: bought early in your journey, sold some for a small profit
+    txn('2025-03-15', 'buy',  rgti, ibkrGia, 100, 8.50,  'USD', 0.78, 0.50, 'first ever trade'),
+    txn('2025-04-02', 'sell', rgti, ibkrGia,  50, 11.20, 'USD', 0.79, 0.50, 'early profit take'),
+    // Then bought more later as you got "braver" — this triggers the 30-day rule check
+    txn('2025-04-20', 'buy',  rgti, ibkrGia, 200, 14.50, 'USD', 0.76, 0.50, 'doubling down'),
+    txn('2025-09-10', 'sell', rgti, ibkrGia, 100, 11.00, 'USD', 0.75, 0.50, 'cutting losses'),
+
+    // Apple: pure GIA hold
+    txn('2025-05-10', 'buy',  aapl, ibkrGia,  20, 190.00, 'USD', 0.75, 1.00),
+    txn('2025-07-15', 'buy',  aapl, ibkrGia,  10, 210.00, 'USD', 0.74, 1.00),
+
+    // VUSA in ISA — CGT-exempt
+    txn('2025-06-01', 'buy',  vusa, ibkrIsa, 50, 8900, 'GBX', 1, 0),
+
+    // eToro trade with higher fees
+    txn('2025-08-05', 'buy',  aapl, etoro,   5,  220.00, 'USD', 0.73, 2.50),
+
+    // Gold: 3x20g + 1oz bought, all sold together for ~£8k with a loss
+    txn('2025-05-20', 'buy',  bar20a, bullion, 1, 1850, 'GBP', 1, 10, '20g bar A'),
+    txn('2025-05-20', 'buy',  bar20b, bullion, 1, 1850, 'GBP', 1, 10, '20g bar B'),
+    txn('2025-05-20', 'buy',  bar20c, bullion, 1, 1850, 'GBP', 1, 10, '20g bar C'),
+    txn('2025-05-20', 'buy',  barOz,  bullion, 1, 2900, 'GBP', 1, 15, '1oz bar'),
+
+    // Lump-sum sale: £8,000 proceeds, £30 handling fee.
+    // Allocated by weight: total = 91.1g. Per bar share of £8000:
+    //   20g bar → (20/91.1) × 8000 ≈ £1756.31
+    //   1oz bar → (31.1/91.1) × 8000 ≈ £2731.07
+    // Same proportional split for the £30 handling fee.
+    txn('2026-03-10', 'sell', bar20a, bullion, 1, 1756.31, 'GBP', 1, 6.59, 'lump-sum sale (3x20g + 1oz = £8000, £30 handling)'),
+    txn('2026-03-10', 'sell', bar20b, bullion, 1, 1756.31, 'GBP', 1, 6.59, 'lump-sum sale'),
+    txn('2026-03-10', 'sell', bar20c, bullion, 1, 1756.31, 'GBP', 1, 6.59, 'lump-sum sale'),
+    txn('2026-03-10', 'sell', barOz,  bullion, 1, 2731.07, 'GBP', 1, 10.23, 'lump-sum sale'),
+  ];
+
+  for (const t of txns) await put('transactions', t);
+}
+
+async function clearAllData() {
+  const { clear } = await import('../storage/indexeddb.js');
+  for (const store of ['transactions', 'assets', 'accounts', 'fxRates', 'prices', 'settings', 'taxYears']) {
+    await clear(store);
+  }
 }
 
 function renderAboutSection() {
