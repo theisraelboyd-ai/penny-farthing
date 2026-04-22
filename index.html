@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en-GB" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f766e" />
+  <meta name="description" content="The giant wheel of gains, the small wheel of what you keep. A UK CGT-aware investment tracker." />
+
+  <title>Penny Farthing</title>
+
+  <link rel="manifest" href="./manifest.json" />
+  <link rel="icon" href="icons/icon-192.png" type="image/png" />
+
+  <!-- Fonts: Inter Tight for display, Inter for body, JetBrains Mono for figures -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="css/theme.css" />
+  <link rel="stylesheet" href="css/layout.css" />
+</head>
+<body>
+  <div class="page-grain" aria-hidden="true"></div>
+
+  <header class="masthead">
+    <div class="masthead__inner">
+      <div class="masthead__title">
+        <span class="masthead__ornament" aria-hidden="true"></span>
+        <h1>Penny Farthing</h1>
+      </div>
+      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">
+        <span class="theme-toggle__icon" aria-hidden="true">☾</span>
+      </button>
+    </div>
+    <div class="masthead__rule" aria-hidden="true"></div>
+  </header>
+
+  <main id="app" class="app-main" role="main">
+    <!-- Views render here -->
+    <section class="loading">
+      <p>Loading…</p>
+    </section>
+  </main>
+
+  <nav class="dock" role="navigation" aria-label="Primary">
+    <a href="#/dashboard" class="dock__item" data-view="dashboard">
+      <span class="dock__icon" aria-hidden="true">◈</span>
+      <span class="dock__label">Dashboard</span>
+    </a>
+    <a href="#/transactions" class="dock__item" data-view="transactions">
+      <span class="dock__icon" aria-hidden="true">≡</span>
+      <span class="dock__label">Activity</span>
+    </a>
+    <a href="#/add" class="dock__item dock__item--accent" data-view="add">
+      <span class="dock__icon" aria-hidden="true">+</span>
+      <span class="dock__label">Record</span>
+    </a>
+    <a href="#/tax" class="dock__item" data-view="tax">
+      <span class="dock__icon" aria-hidden="true">§</span>
+      <span class="dock__label">Tax</span>
+    </a>
+    <a href="#/settings" class="dock__item" data-view="settings">
+      <span class="dock__icon" aria-hidden="true">⚙</span>
+      <span class="dock__label">Settings</span>
+    </a>
+  </nav>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
