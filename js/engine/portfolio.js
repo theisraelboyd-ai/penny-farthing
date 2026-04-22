@@ -10,25 +10,39 @@
 
 import { getAll } from '../storage/indexeddb.js';
 import { computePool } from './pool.js';
+import { ensureFxRates } from './fx.js';
 import { ukTaxYear } from '../storage/schema.js';
 
 /**
  * Compute the full portfolio snapshot.
  *
- * @returns {Promise<{
- *   holdings: Array,        // one entry per asset+account with non-zero pool
- *   realisedDisposals: Array, // every disposal across all holdings, chronological
- *   byTaxYear: Object,       // { '2024-25': { gains: [], totalGbp }, ... }
- *   assetMap: Map,
- *   accountMap: Map,
- * }>}
+ * @param {object} [options]
+ * @param {boolean} [options.fetchFx=true] — if true, auto-fetch missing FX rates
+ * @returns {Promise<{...}>}
  */
-export async function computePortfolio() {
-  const [transactions, assets, accounts] = await Promise.all([
+export async function computePortfolio(options = {}) {
+  const { fetchFx = true } = options;
+
+  let [transactions, assets, accounts] = await Promise.all([
     getAll('transactions'),
     getAll('assets'),
     getAll('accounts'),
   ]);
+
+  // Auto-fetch any missing FX rates. Non-blocking on failure — we'll use
+  // whatever's stored. Skipped if caller explicitly opts out (useful for
+  // tests and for offline use).
+  if (fetchFx) {
+    try {
+      const result = await ensureFxRates(transactions);
+      if (result.updated > 0) {
+        // Re-read transactions; ensureFxRates writes them back to storage.
+        transactions = await getAll('transactions');
+      }
+    } catch (err) {
+      console.warn('[portfolio] FX auto-fetch failed:', err.message);
+    }
+  }
 
   const assetMap = new Map(assets.map((a) => [a.id, a]));
   const accountMap = new Map(accounts.map((a) => [a.id, a]));

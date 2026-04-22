@@ -181,7 +181,7 @@ export async function renderAddTransaction(mount) {
     el('label', { for: 'txn-fx' }, 'FX rate to GBP'),
     el('input', { type: 'number', id: 'txn-fx', class: 'input', step: 'any', value: '1' }),
     el('p', { class: 'form-group__hint' },
-      'How many GBP you get for 1 unit of transaction currency. Day 2 will fetch this automatically from Frankfurter.'),
+      'Leave at 1 to auto-fetch from Frankfurter (ECB end-of-day rate). Enter your broker’s actual executed rate for more accuracy — manually-entered rates are preserved and never overwritten.'),
   );
 
   const feesField = el('div', { class: 'form-group' },
@@ -245,10 +245,23 @@ export async function renderAddTransaction(mount) {
       const quantity = parseFloat(form.querySelector('#txn-qty').value);
       const pricePerUnit = parseFloat(form.querySelector('#txn-price').value);
       const currency = form.querySelector('#txn-currency').value;
-      const fxRate = parseFloat(form.querySelector('#txn-fx').value || '1');
+      const fxRateRaw = form.querySelector('#txn-fx').value;
+      const fxRate = parseFloat(fxRateRaw || '1');
       const fees = parseFloat(form.querySelector('#txn-fees').value || '0');
       const accountId = form.querySelector('#txn-account').value;
       const notes = form.querySelector('#txn-notes').value || '';
+
+      // Decide FX source:
+      //   - GBP/GBX: trivial, handled by the engine
+      //   - Foreign currency where user left the default of "1": mark auto,
+      //     Frankfurter will fetch on next portfolio render
+      //   - Foreign currency with a user-entered value != 1: mark manual,
+      //     never overwritten
+      let fxSource = 'trivial';
+      if (currency !== 'GBP' && currency !== 'GBX') {
+        const userTouchedRate = fxRateRaw !== '' && fxRateRaw !== '1' && parseFloat(fxRateRaw) !== 1;
+        fxSource = userTouchedRate ? 'manual' : 'auto';
+      }
 
       const txn = {
         id: uuid(),
@@ -260,6 +273,7 @@ export async function renderAddTransaction(mount) {
         pricePerUnit,
         currency,
         fxRate,
+        fxSource,
         fees,
         taxYear: ukTaxYear(date),
         notes,

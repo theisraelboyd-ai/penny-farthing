@@ -54,10 +54,19 @@ export async function renderTransactions(mount) {
         const asset = assetMap.get(t.assetId);
         const account = accountMap.get(t.accountId);
         const gross = (t.quantity || 0) * (t.pricePerUnit || 0);
-        const gbpFx = t.currency === 'GBX' ? (t.fxRate || 1) / 100 : (t.fxRate || 1);
+        const gbpFx = t.currency === 'GBX' ? (t.fxRate || 1) * 0.01 : (t.fxRate || 1);
         const grossGbp = gross * gbpFx;
         const typeLabel = t.type.charAt(0).toUpperCase() + t.type.slice(1);
         const rowClass = (t.type === 'sell' || t.type === 'dividend') ? 'credit' : '';
+
+        // FX source indicator for foreign currency only
+        const needsFxIndicator = t.currency !== 'GBP' && t.currency !== 'GBX';
+        const fxSource = t.fxSource || 'unset';
+        const fxLabel = needsFxIndicator
+          ? (fxSource === 'manual' ? 'manual' :
+             fxSource === 'auto' ? 'auto' :
+             'unset rate')
+          : null;
 
         return el('tr', {},
           el('td', {}, formatDate(t.date)),
@@ -68,7 +77,13 @@ export async function renderTransactions(mount) {
               account ? `${account.name} · ${account.wrapper}` : ''),
           ),
           el('td', { class: 'num' }, formatNumber(t.quantity, 6)),
-          el('td', { class: `num ${rowClass}` }, formatCurrency(grossGbp, 'GBP')),
+          el('td', { class: `num ${rowClass}` },
+            formatCurrency(grossGbp, 'GBP'),
+            needsFxIndicator
+              ? el('div', { class: 'text-faint', style: { fontSize: '0.7rem' } },
+                  `${formatNumber((t.quantity || 0) * (t.pricePerUnit || 0), 2)} ${t.currency} · fx ${fxLabel}`)
+              : null,
+          ),
           el('td', { style: { textAlign: 'right' } },
             el('button', {
               class: 'button button--ghost button-sm',
