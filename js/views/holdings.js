@@ -7,6 +7,7 @@
 import { el, formatCurrency, formatNumber } from '../ui.js';
 import { computePortfolio } from '../engine/portfolio.js';
 import { navigate } from '../router.js';
+import { glyphFor } from '../visual/glyphs.js';
 
 export async function renderHoldings(mount) {
   const portfolio = await computePortfolio();
@@ -14,7 +15,7 @@ export async function renderHoldings(mount) {
   mount.append(
     el('div', { class: 'view-header' },
       el('h2', {}, 'Holdings'),
-      el('p', {}, 'Current positions with Section 104 pooled cost basis.'),
+      el('p', {}, 'Current positions with Section 104 pooled cost basis. Market value and after-tax arrive with the next release.'),
     ),
   );
 
@@ -89,33 +90,47 @@ function renderHoldingsTable(holdings) {
         el('th', {}, 'Asset'),
         el('th', {}, 'Account'),
         el('th', { class: 'num' }, 'Quantity'),
-        el('th', { class: 'num' }, 'Avg cost (GBP)'),
-        el('th', { class: 'num' }, 'Cost basis (GBP)'),
+        el('th', { class: 'num' }, 'Avg cost'),
+        el('th', { class: 'num' }, 'Cost basis'),
+        el('th', { class: 'num' }, 'Market value'),
+        el('th', { class: 'num' }, 'If sold now'),
       ),
     ),
     el('tbody', {},
       ...holdings.map((h) => {
         const nativeCurrency = h.asset.baseCurrency || 'GBP';
         const showNative = nativeCurrency !== 'GBP' && nativeCurrency !== 'GBX';
+        const g = glyphFor(h.asset.type);
         return el('tr', {},
           el('td', {},
-            el('div', { style: { fontWeight: '500' } }, h.asset.ticker || '—'),
-            el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
-              h.asset.name || ''),
+            el('div', { style: { display: 'flex', alignItems: 'center' } },
+              el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
+              el('div', {},
+                el('div', { style: { fontWeight: '500' } }, h.asset.ticker || '—'),
+                el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+                  h.asset.name || ''),
+              ),
+            ),
           ),
           el('td', {},
             el('div', { style: { fontSize: 'var(--f-sm)' } }, h.account.name),
+            el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+              h.account.wrapper),
           ),
           el('td', { class: 'num' }, formatNumber(h.quantity, 6)),
           el('td', { class: 'num' },
             formatCurrency(h.avgCostGbp, 'GBP'),
             showNative
               ? el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
-                  `≈ ${nativeCurrency}`)
+                  `native ${nativeCurrency}`)
               : null,
           ),
           el('td', { class: 'num', style: { fontWeight: '500' } },
             formatCurrency(h.costGbp, 'GBP')),
+          // Market value — placeholder until live prices land in the next release
+          el('td', { class: 'num text-faint' }, '—'),
+          // "If sold now" after-tax — placeholder
+          el('td', { class: 'num text-faint' }, '—'),
         );
       }),
     ),

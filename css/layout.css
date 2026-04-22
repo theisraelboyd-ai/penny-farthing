@@ -402,6 +402,115 @@
 .pill--gain { color: var(--gain); border-color: transparent; background: var(--gain-soft); }
 .pill--loss { color: var(--loss); border-color: transparent; background: var(--loss-soft); }
 
+/* Transaction-type pills — distinct by colour family, not by gain/loss semantics */
+.pill--buy {
+  color: var(--accent);
+  border-color: var(--accent-ring);
+  background: var(--accent-wash);
+}
+.pill--sell {
+  color: var(--gain);
+  border-color: transparent;
+  background: var(--gain-soft);
+}
+.pill--dividend {
+  color: var(--warn);
+  border-color: transparent;
+  background: rgba(180, 83, 9, 0.1);
+}
+[data-theme="dark"] .pill--dividend {
+  background: rgba(251, 191, 36, 0.12);
+}
+.pill--fee {
+  color: var(--text-faint);
+  background: var(--surface-2);
+}
+.pill--transfer {
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+
+/* Asset-type glyph — bigger, subtly coloured */
+.asset-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  font-size: 0.95rem;
+  border-radius: var(--radius-sm);
+  margin-right: var(--space-2);
+  flex-shrink: 0;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  line-height: 1;
+}
+.asset-glyph--accent { color: var(--accent); }
+.asset-glyph--gold {
+  color: var(--warn);
+  background: rgba(180, 83, 9, 0.08);
+}
+[data-theme="dark"] .asset-glyph--gold {
+  color: var(--warn);
+  background: rgba(251, 191, 36, 0.08);
+}
+
+/* Row emphasis — subtle left border for sell rows so they read instantly */
+.hairline-table tbody tr.txn-row--sell td:first-child {
+  border-left: 3px solid var(--gain);
+  padding-left: calc(var(--space-3) - 3px);
+}
+.hairline-table tbody tr.txn-row--buy td:first-child {
+  border-left: 3px solid var(--accent);
+  padding-left: calc(var(--space-3) - 3px);
+}
+.hairline-table tbody tr.txn-row--dividend td:first-child {
+  border-left: 3px solid var(--warn);
+  padding-left: calc(var(--space-3) - 3px);
+}
+.hairline-table tbody tr.txn-row--fee td:first-child {
+  border-left: 3px solid var(--border-strong);
+  padding-left: calc(var(--space-3) - 3px);
+}
+
+/* Activity filter chips */
+.filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.filter-chip {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--f-sm);
+  font-weight: 500;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-family: var(--font-body);
+}
+.filter-chip:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.filter-chip.is-active {
+  background: var(--accent-wash);
+  color: var(--accent);
+  border-color: var(--accent);
+  font-weight: 600;
+}
+.filter-chip__count {
+  display: inline-block;
+  margin-left: 4px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
+
 /* Quiet divider */
 .motif-divider {
   margin: var(--space-5) 0;

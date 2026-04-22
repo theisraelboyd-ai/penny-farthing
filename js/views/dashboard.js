@@ -5,6 +5,7 @@
 import { el, formatCurrency, formatNumber } from '../ui.js';
 import { computePortfolio } from '../engine/portfolio.js';
 import { navigate } from '../router.js';
+import { glyphFor, txnStyle } from '../visual/glyphs.js';
 
 export async function renderDashboard(mount) {
   const portfolio = await computePortfolio();
@@ -81,16 +82,24 @@ export async function renderDashboard(mount) {
             ),
           ),
           el('tbody', {},
-            ...topHoldings.map((h) => el('tr', {},
-              el('td', {},
-                el('div', { style: { fontWeight: '500' } }, h.asset.ticker || '—'),
-                el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
-                  h.asset.name || ''),
-              ),
-              el('td', {}, el('span', { class: 'pill' }, h.account.wrapper || '—')),
-              el('td', { class: 'num' }, formatNumber(h.quantity, 4)),
-              el('td', { class: 'num' }, formatCurrency(h.costGbp, 'GBP')),
-            )),
+            ...topHoldings.map((h) => {
+              const g = glyphFor(h.asset.type);
+              return el('tr', {},
+                el('td', {},
+                  el('div', { style: { display: 'flex', alignItems: 'center' } },
+                    el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
+                    el('div', {},
+                      el('div', { style: { fontWeight: '500' } }, h.asset.ticker || '—'),
+                      el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+                        h.asset.name || ''),
+                    ),
+                  ),
+                ),
+                el('td', {}, el('span', { class: 'pill' }, h.account.wrapper || '—')),
+                el('td', { class: 'num' }, formatNumber(h.quantity, 4)),
+                el('td', { class: 'num' }, formatCurrency(h.costGbp, 'GBP')),
+              );
+            }),
           ),
         ),
       ),
