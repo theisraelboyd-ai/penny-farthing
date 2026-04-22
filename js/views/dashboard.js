@@ -1,32 +1,18 @@
-/* Dashboard — Day 1.5 redesign.
- * Stat tiles at the top, preview of real portfolio summary to come in Day 2.
+/* Dashboard — top-level view.
+ * Summary stat tiles + holdings preview + links to detail views.
  */
 
-import { el, formatCurrency } from '../ui.js';
-import { getAll } from '../storage/indexeddb.js';
+import { el, formatCurrency, formatNumber } from '../ui.js';
+import { computePortfolio } from '../engine/portfolio.js';
 import { navigate } from '../router.js';
 
 export async function renderDashboard(mount) {
-  const [transactions, assets, accounts] = await Promise.all([
-    getAll('transactions'),
-    getAll('assets'),
-    getAll('accounts'),
-  ]);
-
-  // Rough at-a-glance numbers. Full CGT-aware computation lands in Day 2.
-  let totalBuys = 0;
-  let totalSells = 0;
-  for (const t of transactions) {
-    const gross = (t.quantity || 0) * (t.pricePerUnit || 0);
-    const gbpFx = t.currency === 'GBX' ? (t.fxRate || 1) / 100 : (t.fxRate || 1);
-    const gbp = gross * gbpFx;
-    if (t.type === 'buy') totalBuys += gbp + (t.fees || 0) * gbpFx;
-    if (t.type === 'sell') totalSells += gbp - (t.fees || 0) * gbpFx;
-  }
-  const netDeployed = totalBuys - totalSells;
+  const portfolio = await computePortfolio();
+  const txnCount = portfolio.realisedDisposals.length +
+    portfolio.holdings.length; // rough indicator; not strictly accurate, fine for header
 
   // ----- Empty state -----
-  if (transactions.length === 0) {
+  if (portfolio.holdings.length === 0 && portfolio.realisedDisposals.length === 0) {
     mount.append(
       el('div', { class: 'view-header' },
         el('h2', {}, 'Dashboard'),
@@ -35,16 +21,11 @@ export async function renderDashboard(mount) {
       el('section', { class: 'ledger-page' },
         el('div', { class: 'empty-state' },
           el('h3', { style: { fontWeight: '500', color: 'var(--text-muted)' } },
-            accounts.length === 0 ? 'No accounts yet' : 'No transactions yet'),
-          el('p', {},
-            accounts.length === 0
-              ? 'Add your first account and start recording trades to see your positions here.'
-              : 'Record your first transaction to see your holdings and gain/loss summary here.'),
+            'No activity yet'),
+          el('p', {}, 'Record your first transaction to see your portfolio summary here.'),
           el('div', { class: 'button-row', style: { justifyContent: 'center' } },
-            el('button', {
-              class: 'button',
-              onclick: () => navigate('/add'),
-            }, 'Record a transaction'),
+            el('button', { class: 'button', onclick: () => navigate('/add') },
+              'Record a transaction'),
           ),
         ),
       ),
@@ -52,48 +33,112 @@ export async function renderDashboard(mount) {
     return;
   }
 
-  // ----- Stat tiles -----
-  const statGrid = el('div', { class: 'stat-grid' },
-    statTile('Net deployed', formatCurrency(netDeployed, 'GBP'),
-      `${transactions.length} transaction${transactions.length === 1 ? '' : 's'}`),
-    statTile('Assets', String(assets.length),
-      `${accounts.length} account${accounts.length === 1 ? '' : 's'}`),
-    statTile('Gross buys', formatCurrency(totalBuys, 'GBP'), 'purchases to date'),
-    statTile('Gross sells', formatCurrency(totalSells, 'GBP'), 'disposals to date'),
-  );
+  const totalCostBasis = portfolio.holdings.reduce((s, h) => s + h.costGbp, 0);
 
-  // ----- Portfolio summary placeholder -----
-  const note = el('section', { class: 'ledger-page' },
-    el('div', { class: 'ledger-page__heading' },
-      el('h2', {}, 'Holdings'),
-      el('span', { class: 'pill' }, 'Day 2'),
-    ),
-    el('p', { class: 'text-muted', style: { fontSize: 'var(--f-sm)' } },
-      'Section 104 pooled positions, FX-adjusted cost basis, live prices, and the ',
-      el('em', {}, '"if sold now, net of tax"'),
-      ' calculation arrive in the next release.'),
-    el('p', { class: 'text-muted', style: { fontSize: 'var(--f-sm)' } },
-      'In the meantime, record trades in ',
-      el('a', { href: '#/add' }, 'Record'),
-      ' and configure your tax year in ',
-      el('a', { href: '#/settings' }, 'Settings'),
-      '.'),
-  );
+  // Tax-year realised totals
+  const currentTaxYear = Object.keys(portfolio.byTaxYear).sort().pop();
+  const currentYearData = currentTaxYear ? portfolio.byTaxYear[currentTaxYear] : null;
 
   mount.append(
     el('div', { class: 'view-header' },
       el('h2', {}, 'Dashboard'),
       el('p', {}, 'Portfolio summary and holdings overview.'),
     ),
-    statGrid,
-    note,
+
+    el('div', { class: 'stat-grid' },
+      statTile('Holdings cost basis',
+        formatCurrency(totalCostBasis, 'GBP'),
+        `${portfolio.holdings.length} open position${portfolio.holdings.length === 1 ? '' : 's'}`),
+      statTile('Disposals to date',
+        String(portfolio.realisedDisposals.length),
+        'matched and recorded'),
+      currentYearData
+        ? statTile(`Net realised ${currentTaxYear}`,
+            formatCurrency(currentYearData.netGbp, 'GBP'),
+            currentYearData.netGbp >= 0 ? 'gain in current tax year' : 'loss in current tax year',
+            currentYearData.netGbp >= 0 ? 'gain' : 'loss')
+        : statTile('Net realised', '—', 'no CGT-taxable disposals yet'),
+    ),
   );
+
+  // Holdings preview — top 5 positions
+  if (portfolio.holdings.length > 0) {
+    const topHoldings = portfolio.holdings.slice(0, 5);
+    mount.append(
+      el('section', { class: 'ledger-page' },
+        el('div', { class: 'ledger-page__heading' },
+          el('h2', {}, 'Top positions'),
+          el('a', { href: '#/holdings', style: { fontSize: 'var(--f-sm)' } },
+            `View all ${portfolio.holdings.length} →`),
+        ),
+        el('table', { class: 'hairline-table' },
+          el('thead', {},
+            el('tr', {},
+              el('th', {}, 'Asset'),
+              el('th', {}, 'Account'),
+              el('th', { class: 'num' }, 'Qty'),
+              el('th', { class: 'num' }, 'Cost (GBP)'),
+            ),
+          ),
+          el('tbody', {},
+            ...topHoldings.map((h) => el('tr', {},
+              el('td', {},
+                el('div', { style: { fontWeight: '500' } }, h.asset.ticker || '—'),
+                el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+                  h.asset.name || ''),
+              ),
+              el('td', {}, el('span', { class: 'pill' }, h.account.wrapper || '—')),
+              el('td', { class: 'num' }, formatNumber(h.quantity, 4)),
+              el('td', { class: 'num' }, formatCurrency(h.costGbp, 'GBP')),
+            )),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Recent disposals preview
+  if (portfolio.realisedDisposals.length > 0) {
+    const recent = portfolio.realisedDisposals.slice(0, 5);
+    mount.append(
+      el('section', { class: 'ledger-page' },
+        el('div', { class: 'ledger-page__heading' },
+          el('h2', {}, 'Recent disposals'),
+          el('a', { href: '#/tax', style: { fontSize: 'var(--f-sm)' } },
+            'View tax summary →'),
+        ),
+        el('table', { class: 'hairline-table' },
+          el('thead', {},
+            el('tr', {},
+              el('th', {}, 'Date'),
+              el('th', {}, 'Asset'),
+              el('th', { class: 'num' }, 'Proceeds'),
+              el('th', { class: 'num' }, 'Gain / Loss'),
+            ),
+          ),
+          el('tbody', {},
+            ...recent.map((d) => {
+              const isGain = d.gainGbp >= 0;
+              return el('tr', {},
+                el('td', {}, d.date),
+                el('td', {}, d.assetTicker),
+                el('td', { class: 'num' }, formatCurrency(d.proceedsNetGbp, 'GBP')),
+                el('td', { class: `num ${isGain ? 'gain' : 'loss'}` },
+                  (isGain ? '+' : '') + formatCurrency(d.gainGbp, 'GBP')),
+              );
+            }),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
-function statTile(label, value, sub) {
+function statTile(label, value, sub, tone) {
+  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : '';
   return el('div', { class: 'stat-tile' },
     el('div', { class: 'stat-tile__label' }, label),
-    el('div', { class: 'stat-tile__value' }, value),
+    el('div', { class: `stat-tile__value ${valueClass}` }, value),
     sub ? el('div', { class: 'stat-tile__sub' }, sub) : null,
   );
 }

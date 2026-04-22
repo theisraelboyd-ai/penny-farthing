@@ -5,6 +5,7 @@
 
 import { registerRoute, start } from './router.js';
 import { renderDashboard } from './views/dashboard.js';
+import { renderHoldings } from './views/holdings.js';
 import { renderTransactions } from './views/transactions.js';
 import { renderAddTransaction } from './views/add-transaction.js';
 import { renderSettings } from './views/settings.js';
@@ -53,6 +54,7 @@ function registerSw() {
    ============================================================ */
 
 registerRoute('/dashboard',     renderDashboard);
+registerRoute('/holdings',      renderHoldings);
 registerRoute('/transactions',  renderTransactions);
 registerRoute('/add',           renderAddTransaction);
 registerRoute('/tax',           renderTax);
