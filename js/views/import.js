@@ -110,6 +110,13 @@ async function renderPreview(container, parsed, accountId, onCommit) {
   }
 
   // Warnings section
+  if (parsed.summary) {
+    container.append(
+      el('p', { class: 'text-faint', style: { fontSize: 'var(--f-sm)', marginBottom: 'var(--space-3)' } },
+        parsed.summary),
+    );
+  }
+
   if (warnings.length > 0) {
     container.append(
       el('section', { class: 'ledger-page', style: { borderColor: 'var(--warn)' } },
