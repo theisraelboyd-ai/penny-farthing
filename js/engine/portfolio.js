@@ -146,6 +146,50 @@ export async function computePortfolio(options = {}) {
     }
   }
 
+  // After initial aggregation, compute auto-carried losses. We walk the years
+  // in chronological order; at each year, losses from all PRIOR years (that
+  // haven't already been used to offset gains in intermediate years) carry
+  // forward into this year's available pool. Same logic separately for
+  // standard CGT and for CFDs.
+  //
+  // This means the user only needs to seed an initial "pre-tracking" loss
+  // balance in Settings if they had losses before they started using the
+  // app. Everything within the app's own history chains automatically.
+  const yearsChronological = Object.keys(byTaxYear).sort();
+  let runningStdBf = 0;
+  let runningCfdBf = 0;
+  for (const yr of yearsChronological) {
+    const data = byTaxYear[yr];
+
+    // Standard CGT bucket
+    data.lossesBfAutoStd = runningStdBf;
+    const stdBfAvailableAfter = runningStdBf + (data.netGbp < 0 ? Math.abs(data.netGbp) : 0);
+    // If this year has a positive net, allowance and bf would eat into it,
+    // but we don't know the user's AEA / bf-use preferences here. Conservative
+    // approach: pass the full carried amount to next year; the tax view
+    // decides what to actually apply. This over-reports available losses to
+    // the displayed tax year but never under-reports them.
+    //
+    // Refinement: if net is positive, we assume ALL available bf losses are
+    // used against it first (because the user would naturally minimise their
+    // tax bill). Any leftover carries on.
+    if (data.netGbp > 0) {
+      const used = Math.min(runningStdBf, data.netGbp);
+      runningStdBf = runningStdBf - used;
+    } else if (data.netGbp < 0) {
+      runningStdBf += Math.abs(data.netGbp);
+    }
+
+    // CFD bucket — fully ring-fenced, separate running balance
+    data.lossesBfAutoCfd = runningCfdBf;
+    if (data.cfdNetGbp > 0) {
+      const used = Math.min(runningCfdBf, data.cfdNetGbp);
+      runningCfdBf = runningCfdBf - used;
+    } else if (data.cfdNetGbp < 0) {
+      runningCfdBf += Math.abs(data.cfdNetGbp);
+    }
+  }
+
   return {
     holdings,
     realisedDisposals: allDisposals,

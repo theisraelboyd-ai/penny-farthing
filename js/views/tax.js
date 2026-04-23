@@ -57,18 +57,38 @@ export async function renderTax(mount) {
     yearSettings[year] = await get('taxYears', year);
   }
 
+  // Main app settings — default SED status and pre-tracking seed losses
+  const mainSettings = await get('settings', 'main');
+  const defaultSedStatus = mainSettings?.defaultSedStatus || 'pending';
+  const preTrackingSeedLosses = mainSettings?.preTrackingSeedLosses || 0;
+
   // Render each year
   for (const year of yearsWithData) {
     const data = portfolio.byTaxYear[year];
     const settings = yearSettings[year];
-    mount.append(renderYearCard(year, data, settings, year === currentYear));
+    mount.append(renderYearCard(year, data, settings, year === currentYear, {
+      defaultSedStatus,
+      preTrackingSeedLosses,
+      // For the earliest year, the seed losses apply; for later years, the
+      // auto-carried computation already chained them through.
+      isEarliestYear: year === yearsWithData[yearsWithData.length - 1],
+    }));
   }
 }
 
-function renderYearCard(year, data, settings, isCurrent) {
-  const sedStatus = settings?.sedStatus || 'pending';
+function renderYearCard(year, data, settings, isCurrent, opts = {}) {
+  const { defaultSedStatus = 'pending', preTrackingSeedLosses = 0, isEarliestYear = false } = opts;
+  // Per-year override wins; otherwise fall back to the user's default
+  const sedStatus = settings?.sedStatus || defaultSedStatus;
   const nonSedIncome = settings?.nonSedTaxableIncome || 0;
-  const lossesBf = settings?.carriedLosses || 0;
+
+  // Losses-brought-forward = auto-carried from prior tracked years (computed
+  // by the engine), plus an optional seed amount applied only to the earliest
+  // tracked year (represents losses from before Penny Farthing started
+  // tracking).
+  const autoBf = data.lossesBfAutoStd || 0;
+  const seed = isEarliestYear ? preTrackingSeedLosses : 0;
+  const lossesBf = autoBf + seed;
 
   // Compute net position
   const totalGain = data.totalGainGbp;
@@ -85,10 +105,10 @@ function renderYearCard(year, data, settings, isCurrent) {
   //   If netGbp is positive, proceed.
 
   let taxableAfterLosses = Math.max(0, netGbp);
-  let losesBfUsed = 0;
+  let lossesBfUsed = 0;
   if (taxableAfterLosses > 0 && lossesBf > 0) {
-    losesBfUsed = Math.min(taxableAfterLosses, lossesBf);
-    taxableAfterLosses -= losesBfUsed;
+    lossesBfUsed = Math.min(taxableAfterLosses, lossesBf);
+    taxableAfterLosses -= lossesBfUsed;
   }
 
   // Step 2: Apply annual exempt amount
@@ -134,7 +154,7 @@ function renderYearCard(year, data, settings, isCurrent) {
     el('tbody', {},
       row('Net gain/loss for the year (standard CGT)', netGbp, { tone: netGbp < 0 ? 'loss' : netGbp > 0 ? 'gain' : null }),
       lossesBf > 0 && netGbp > 0
-        ? row(`Losses brought forward used`, -losesBfUsed)
+        ? row(`Losses brought forward used`, -lossesBfUsed)
         : null,
       netGbp > 0 ? row('Annual exempt amount', -exemptUsed) : null,
       netGbp > 0

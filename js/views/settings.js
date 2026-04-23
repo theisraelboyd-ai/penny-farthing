@@ -28,12 +28,65 @@ export async function renderSettings(mount) {
       el('p', {}, 'Tax-year status, connections, accounts, and backups.'),
     ),
 
+    renderPreferencesSection(settings),
     await renderSedSection(currentYear, priorYear),
     renderConnectionsSection(settings),
     await renderAccountsSection(),
     renderBackupSection(),
     renderDeveloperSection(),
     renderAboutSection(),
+  );
+}
+
+function renderPreferencesSection(settings) {
+  const existing = settings || { id: 'main' };
+  const defaultSed = existing.defaultSedStatus || 'pending';
+  const seedLosses = existing.preTrackingSeedLosses || 0;
+
+  const form = el('form', {});
+
+  form.append(
+    el('div', { class: 'form-row' },
+      el('div', { class: 'form-group' },
+        el('label', { for: 'pref-default-sed' }, 'Default SED claim status'),
+        el('select', { id: 'pref-default-sed', class: 'select' },
+          ...[
+            ['pending', 'Pending (not yet filed / confirmed)'],
+            ['claimed', 'Claimed successfully'],
+            ['not-eligible', 'Not eligible'],
+          ].map(([v, label]) =>
+            el('option', { value: v, ...(defaultSed === v ? { selected: true } : {}) }, label)),
+        ),
+        el('p', { class: 'form-group__hint' },
+          'Applied to every tax year unless you override it below. Most seafarers set this once to "Claimed" and forget.'),
+      ),
+      el('div', { class: 'form-group' },
+        el('label', { for: 'pref-seed-losses' }, 'Pre-tracking loss balance (£)'),
+        el('input', { type: 'number', id: 'pref-seed-losses', class: 'input',
+          step: 'any', value: seedLosses, placeholder: '0' }),
+        el('p', { class: 'form-group__hint' },
+          'Losses reported to HMRC BEFORE you started using Penny Farthing. Usually 0. Losses within tracked years carry forward automatically.'),
+      ),
+    ),
+    el('button', { type: 'submit', class: 'button' }, 'Save preferences'),
+  );
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const updated = (await get('settings', 'main')) || { id: 'main' };
+    updated.defaultSedStatus = form.querySelector('#pref-default-sed').value;
+    updated.preTrackingSeedLosses = parseFloat(form.querySelector('#pref-seed-losses').value || '0');
+    await put('settings', updated);
+    toast('Preferences saved');
+  });
+
+  return el('section', { class: 'ledger-page' },
+    el('div', { class: 'ledger-page__heading' },
+      el('h2', {}, 'Preferences'),
+    ),
+    el('p', { class: 'ledger-page__subtitle' },
+      'App-wide defaults. Set once, apply everywhere.'),
+    form,
   );
 }
 
@@ -45,63 +98,59 @@ async function renderSedSection(currentYear, priorYear) {
 
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
-      el('h2', {}, 'Seafarer status & income'),
-      el('span', { class: 'ledger-page__folio' }, 'Tax year'),
+      el('h2', {}, 'Per-year SED overrides'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
-      'The difference between the basic and higher CGT rate is determined by your taxable income ',
-      'after SED is applied. Record that here so the ledger can compute both scenarios.'),
+      'Override your default SED status for a specific year (e.g. a year you worked shore-side). Record your non-SED taxable income so the ledger can apportion CGT between basic and higher rate bands.'),
   );
 
   const sedForm = (year, rec) => {
-    const existing = rec || { year, sedStatus: 'pending', nonSedTaxableIncome: 0, carriedLosses: 0, lossesReported: false };
+    const existing = rec || { year, sedStatus: null, nonSedTaxableIncome: 0, lossesReported: false };
 
     const form = el('form', { style: { marginBottom: '1.5rem' } },
       el('h3', { style: { fontSize: '1.1rem' } }, `Tax year ${year}`),
       el('div', { class: 'form-row' },
         el('div', { class: 'form-group' },
-          el('label', {}, 'SED claim status'),
+          el('label', {}, 'SED claim status (override)'),
           el('select', { id: `sed-status-${year}`, class: 'select' },
             ...[
-              ['pending', 'Pending (not yet filed/confirmed)'],
+              ['', 'Use default'],
+              ['pending', 'Pending'],
               ['claimed', 'Claimed successfully'],
               ['not-eligible', 'Not eligible this year'],
             ].map(([v, label]) =>
-              el('option', { value: v, ...(existing.sedStatus === v ? { selected: true } : {}) }, label)),
+              el('option', { value: v, ...((existing.sedStatus || '') === v ? { selected: true } : {}) }, label)),
           ),
+          el('p', { class: 'form-group__hint' },
+            'Leave as "Use default" unless this year is unusual.'),
         ),
         el('div', { class: 'form-group' },
           el('label', {}, 'Non-SED taxable income (£)'),
           el('input', { type: 'number', id: `sed-income-${year}`, class: 'input', step: 'any',
             value: existing.nonSedTaxableIncome || 0 }),
+          el('p', { class: 'form-group__hint' },
+            'UK-taxable income this year after SED. Determines basic vs higher CGT band.'),
         ),
       ),
-      el('div', { class: 'form-row' },
-        el('div', { class: 'form-group' },
-          el('label', {}, 'Losses brought forward (£)'),
-          el('input', { type: 'number', id: `sed-losses-${year}`, class: 'input', step: 'any',
-            value: existing.carriedLosses || 0 }),
-          el('p', { class: 'form-group__hint' },
-            'Only prior-year losses you have already reported to HMRC.'),
+      el('div', { class: 'form-group' },
+        el('label', {}, 'Losses reported to HMRC for this year?'),
+        el('select', { id: `sed-reported-${year}`, class: 'select' },
+          el('option', { value: 'true', ...(existing.lossesReported ? { selected: true } : {}) }, 'Yes'),
+          el('option', { value: 'false', ...(!existing.lossesReported ? { selected: true } : {}) }, 'No — need to file'),
         ),
-        el('div', { class: 'form-group' },
-          el('label', {}, 'Losses formally reported?'),
-          el('select', { id: `sed-reported-${year}`, class: 'select' },
-            el('option', { value: 'true', ...(existing.lossesReported ? { selected: true } : {}) }, 'Yes'),
-            el('option', { value: 'false', ...(!existing.lossesReported ? { selected: true } : {}) }, 'No — need to file'),
-          ),
-        ),
+        el('p', { class: 'form-group__hint' },
+          'Losses must be formally reported within 4 years to be usable for offset.'),
       ),
       el('button', { type: 'submit', class: 'button' }, `Save ${year}`),
     );
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      const sedChoice = form.querySelector(`#sed-status-${year}`).value;
       await put('taxYears', {
         year,
-        sedStatus: form.querySelector(`#sed-status-${year}`).value,
+        sedStatus: sedChoice || null,  // null = use app-wide default
         nonSedTaxableIncome: parseFloat(form.querySelector(`#sed-income-${year}`).value || '0'),
-        carriedLosses: parseFloat(form.querySelector(`#sed-losses-${year}`).value || '0'),
         lossesReported: form.querySelector(`#sed-reported-${year}`).value === 'true',
       });
       toast(`Saved ${year}`);

@@ -6,6 +6,7 @@ import { el, formatCurrency, formatNumber } from '../ui.js';
 import { computePortfolio } from '../engine/portfolio.js';
 import { navigate } from '../router.js';
 import { glyphFor, txnStyle } from '../visual/glyphs.js';
+import { ukTaxYear } from '../storage/schema.js';
 
 export async function renderDashboard(mount) {
   const portfolio = await computePortfolio();
@@ -36,9 +37,19 @@ export async function renderDashboard(mount) {
 
   const totalCostBasis = portfolio.holdings.reduce((s, h) => s + h.costGbp, 0);
 
-  // Tax-year realised totals
-  const currentTaxYear = Object.keys(portfolio.byTaxYear).sort().pop();
-  const currentYearData = currentTaxYear ? portfolio.byTaxYear[currentTaxYear] : null;
+  // Today's actual UK tax year (not "latest year with data", which drifts)
+  const currentTaxYear = ukTaxYear(new Date());
+  const currentYearData = portfolio.byTaxYear[currentTaxYear] || null;
+
+  // Also find the most recent CLOSED year with activity — useful because a
+  // user might have just crossed an April boundary and the previous year's
+  // paperwork is still relevant to them.
+  const closedYearsWithData = Object.keys(portfolio.byTaxYear)
+    .filter((y) => y !== currentTaxYear && y < currentTaxYear)
+    .sort()
+    .reverse();
+  const recentClosedYear = closedYearsWithData[0] || null;
+  const recentClosedData = recentClosedYear ? portfolio.byTaxYear[recentClosedYear] : null;
 
   mount.append(
     el('div', { class: 'view-header' },
@@ -53,12 +64,23 @@ export async function renderDashboard(mount) {
       statTile('Disposals to date',
         String(portfolio.realisedDisposals.length),
         'matched and recorded'),
+      // Current tax year — the live one we're IN right now
       currentYearData
         ? statTile(`Net realised ${currentTaxYear}`,
             formatCurrency(currentYearData.netGbp, 'GBP'),
-            currentYearData.netGbp >= 0 ? 'gain in current tax year' : 'loss in current tax year',
+            'current tax year',
             currentYearData.netGbp >= 0 ? 'gain' : 'loss')
-        : statTile('Net realised', '—', 'no CGT-taxable disposals yet'),
+        : statTile(`Net realised ${currentTaxYear}`,
+            formatCurrency(0, 'GBP'),
+            'no disposals this tax year'),
+      // Most recent CLOSED year if it had activity — still relevant because
+      // Self Assessment deadlines mean you're probably still doing paperwork on it
+      recentClosedData
+        ? statTile(`Net realised ${recentClosedYear}`,
+            formatCurrency(recentClosedData.netGbp, 'GBP'),
+            'closed year — for Self Assessment',
+            recentClosedData.netGbp >= 0 ? 'gain' : 'loss')
+        : null,
     ),
   );
 

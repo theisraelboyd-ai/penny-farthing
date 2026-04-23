@@ -120,10 +120,13 @@ export const STORES = {
  * TaxYear
  * @typedef {object} TaxYear
  * @property {string} year              - '2024-25'
- * @property {string} sedStatus         - 'claimed' | 'pending' | 'not-eligible'
+ * @property {string|null} sedStatus    - 'claimed' | 'pending' | 'not-eligible' | null (use default)
  * @property {number} nonSedTaxableIncome - GBP, used for band determination
- * @property {number} carriedLosses     - GBP, losses brought forward from prior years
  * @property {boolean} lossesReported   - have the losses been formally claimed with HMRC
+ *
+ * Note: losses brought forward are now auto-computed by the portfolio engine
+ * from prior tracked years. For losses from before the user started tracking,
+ * see Settings.preTrackingSeedLosses.
  */
 
 /**
@@ -133,6 +136,9 @@ export const STORES = {
  * @property {string} theme             - 'light' | 'dark' | 'auto'
  * @property {string} [finnhubApiKey]
  * @property {string} [githubToken]
+ * @property {string} [defaultSedStatus] - default SED status for all tax years
+ * @property {number} [preTrackingSeedLosses] - losses from before Penny Farthing tracking began
+ * @property {string} [lastClosedPositionAccountId] - remembered for closed-position form
  * @property {string} [gistId]
  * @property {string} lastSyncedAt      - ISO timestamp
  * @property {string} createdAt         - ISO

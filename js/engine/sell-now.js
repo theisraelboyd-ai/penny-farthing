@@ -73,7 +73,7 @@ function applyReliefs(totalGain, lossesBf) {
  * @param {string} params.taxYear            — e.g. '2025-26'
  * @returns {Promise<object>}
  */
-export async function computeSellNow({ holding, marketPriceNative, priceCurrency, portfolio, yearSettings, taxYear }) {
+export async function computeSellNow({ holding, marketPriceNative, priceCurrency, portfolio, yearSettings, taxYear, sedOverride = null, preTrackingSeedLosses = 0 }) {
   // ----- 1. Market value in GBP -----
   const today = new Date().toISOString().slice(0, 10);
   let fxRate = null;
@@ -105,7 +105,7 @@ export async function computeSellNow({ holding, marketPriceNative, priceCurrency
       taxDueGbp: null,
       netInHandGbp: null,
       tone: null,
-      sedStatus: yearSettings?.sedStatus || 'pending',
+      sedStatus: sedOverride || yearSettings?.sedStatus || 'pending',
       fxRateUsed: null,
       fxFailed: true,
       notes: `Could not fetch ${priceCurrency}→GBP rate. Enter it manually on the holding.`,
@@ -140,7 +140,11 @@ export async function computeSellNow({ holding, marketPriceNative, priceCurrency
   // ----- 2. Already-realised gains/losses this tax year -----
   const yearData = portfolio.byTaxYear[taxYear];
   const alreadyRealisedNet = yearData?.netGbp || 0;
-  const lossesBf = yearSettings?.carriedLosses || 0;
+  // Losses brought forward are auto-computed by the portfolio engine from
+  // prior tracked years. We still allow a one-time pre-tracking seed for
+  // years before Penny Farthing started. Kept separate from per-year settings
+  // which no longer carry a lossesBf field.
+  const lossesBf = (yearData?.lossesBfAutoStd || 0) + (preTrackingSeedLosses || 0);
   const nonSedIncome = yearSettings?.nonSedTaxableIncome || 0;
 
   // ----- 3. Tax if we DO NOT sell -----
@@ -157,8 +161,9 @@ export async function computeSellNow({ holding, marketPriceNative, priceCurrency
   const marginalCgtSuccess = afterCgtSuccess - baselineCgtSuccess;
   const marginalCgtFail    = afterCgtFail - baselineCgtFail;
 
-  // Use the user's declared SED status for the "primary" figure
-  const sedStatus = yearSettings?.sedStatus || 'pending';
+  // Effective SED status: caller override (for scenario exploration) wins,
+  // otherwise fall back to per-year setting, then 'pending'.
+  const sedStatus = sedOverride || yearSettings?.sedStatus || 'pending';
   const useSuccessRate = sedStatus === 'claimed';
   const primaryTaxDue = useSuccessRate ? marginalCgtSuccess : marginalCgtFail;
   // "Pending" is neither — show both scenarios, default to the higher (more prudent)

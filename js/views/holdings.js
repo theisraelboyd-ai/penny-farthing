@@ -24,6 +24,21 @@ export async function renderHoldings(mount) {
   const currentTaxYear = ukTaxYear(new Date());
   const yearSettings = await get('taxYears', currentTaxYear);
 
+  // Resolve effective SED status: per-year override > app-wide default > 'pending'
+  const defaultSed = settings?.defaultSedStatus || 'pending';
+  const effectiveSed = (yearSettings?.sedStatus && yearSettings.sedStatus !== '')
+    ? yearSettings.sedStatus
+    : defaultSed;
+
+  // View-only scenario override — lives in a module-local variable so the
+  // user can toggle through claimed/pending/fails and see the calc update
+  // without editing their saved tax records.
+  // The toggle persists across re-renders via a window-stash (cleared after read).
+  let scenarioOverride = window.__sedScenarioOverride || effectiveSed;
+  if (window.__sedScenarioOverride) {
+    delete window.__sedScenarioOverride;
+  }
+
   mount.append(
     el('div', { class: 'view-header' },
       el('h2', {}, 'Holdings'),
@@ -67,15 +82,50 @@ export async function renderHoldings(mount) {
     if (p) priceMap.set(h.asset.id, p);
   }
 
-  // Refresh controls
+  // Refresh controls + SED scenario toggle
   const refreshBtn = el('button', { class: 'button' }, 'Refresh prices');
   const refreshStatus = el('span', { class: 'text-faint', style: { fontSize: 'var(--f-sm)', marginLeft: 'var(--space-3)' } });
+
+  // Scenario toggle — view-only (doesn't edit saved tax records)
+  const scenarioLabel = el('span', {
+    class: 'text-muted',
+    style: { fontSize: 'var(--f-sm)', marginRight: 'var(--space-2)' },
+  }, 'Scenario:');
+
+  const scenarioChips = el('div', { class: 'filter-chips', style: { marginBottom: 0 } });
+  const scenarioOptions = [
+    { key: 'claimed',       label: 'SED claimed' },
+    { key: 'pending',       label: 'SED pending' },
+    { key: 'not-eligible',  label: 'SED fails' },
+  ];
+  for (const opt of scenarioOptions) {
+    const chip = el('button', {
+      class: 'filter-chip' + (scenarioOverride === opt.key ? ' is-active' : ''),
+      type: 'button',
+      onclick: async () => {
+        scenarioOverride = opt.key;
+        // Re-render the whole view with the new scenario
+        mount.innerHTML = '';
+        // Pass the override through module-local state — recreate by calling self
+        // with scenario context. Simplest: re-run renderHoldings but the override
+        // will be reset. We stash it on the window briefly:
+        window.__sedScenarioOverride = opt.key;
+        await renderHoldings(mount);
+        delete window.__sedScenarioOverride;
+      },
+    }, opt.label);
+    scenarioChips.append(chip);
+  }
+
   const controls = el('div', {
     style: {
       display: 'flex', alignItems: 'center',
       marginBottom: 'var(--space-4)', gap: 'var(--space-3)', flexWrap: 'wrap',
     },
-  }, refreshBtn, refreshStatus);
+  }, refreshBtn, refreshStatus,
+    el('div', { style: { flex: '1' } }),  // spacer
+    scenarioLabel, scenarioChips,
+  );
 
   refreshBtn.addEventListener('click', async () => {
     if (!apiKey) {
@@ -140,6 +190,8 @@ export async function renderHoldings(mount) {
       portfolio,
       yearSettings,
       taxYear: currentTaxYear,
+      sedOverride: scenarioOverride,
+      preTrackingSeedLosses: settings?.preTrackingSeedLosses || 0,
     });
     sellNowResults.set(h.asset.id, result);
     if (result.fxFailed) {
