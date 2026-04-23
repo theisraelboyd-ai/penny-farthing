@@ -8,9 +8,9 @@
 
 import { el, toast, todayIso } from '../ui.js';
 import { getAll, put, uuid } from '../storage/indexeddb.js';
-import { listAssetTypes, getHandler } from '../assets/registry.js';
 import { ukTaxYear } from '../storage/schema.js';
 import { navigate } from '../router.js';
+import { createAssetPicker } from '../visual/asset-picker.js';
 
 export async function renderAddTransaction(mount, params = {}) {
   const assets = await getAll('assets');
@@ -113,81 +113,13 @@ export async function renderAddTransaction(mount, params = {}) {
     el('p', { class: 'form-group__hint' }, 'Managed in Settings → Accounts.'),
   );
 
-  // --- Asset picker (existing or new) ---
-  const assetSection = el('div', { class: 'form-group' },
-    el('label', { for: 'txn-asset' }, 'Asset'),
-    el('select', { id: 'txn-asset', class: 'select' },
-      el('option', { value: '__new__' }, '+ New asset…'),
-      ...assets.map((a) => el('option', { value: a.id }, `${a.ticker} — ${a.name}`)),
-    ),
-  );
-
-  const newAssetWrap = el('div', { id: 'new-asset-wrap', style: { display: assets.length ? 'none' : 'block', marginTop: '1rem' } });
-  assetSection.appendChild(newAssetWrap);
-
-  // Render new-asset subform on demand
-  const renderNewAssetForm = () => {
-    newAssetWrap.innerHTML = '';
-    const typeSelect = el('select', { id: 'new-asset-type', class: 'select' },
-      ...listAssetTypes().map((t) => el('option', { value: t.key }, t.label)),
-    );
-    const fieldsWrap = el('div', { id: 'new-asset-fields' });
-
-    const renderFields = () => {
-      fieldsWrap.innerHTML = '';
-      const type = typeSelect.value;
-      const handler = getHandler(type);
-      for (const f of handler.formFields()) {
-        const input = f.type === 'select'
-          ? el('select', { id: `asset-${f.name}`, class: 'select', ...(f.required ? { required: true } : {}) },
-              ...(f.options || []).map((o) => {
-                if (typeof o === 'string') return el('option', { value: o }, o);
-                return el('option', { value: o.value }, o.label);
-              }))
-          : el('input', {
-              type: f.type, id: `asset-${f.name}`, class: 'input',
-              ...(f.required ? { required: true } : {}),
-              ...(f.type === 'number' ? { step: 'any' } : {}),
-            });
-        // Apply default
-        if (handler.defaults?.[f.name] != null && f.type === 'select') {
-          input.value = handler.defaults[f.name];
-        }
-        fieldsWrap.append(
-          el('div', { class: 'form-group' },
-            el('label', { for: `asset-${f.name}` }, f.label),
-            input,
-            f.hint ? el('p', { class: 'form-group__hint' }, f.hint) : null,
-          )
-        );
-      }
-    };
-
-    typeSelect.addEventListener('change', renderFields);
-
-    newAssetWrap.append(
-      el('p', { class: 'form-group__hint italic' }, 'Creating a new asset record.'),
-      el('div', { class: 'form-group' },
-        el('label', { for: 'new-asset-type' }, 'Asset type'),
-        typeSelect,
-      ),
-      fieldsWrap,
-    );
-    renderFields();
-  };
-
-  assetSection.querySelector('#txn-asset').addEventListener('change', (e) => {
-    if (e.target.value === '__new__') {
-      newAssetWrap.style.display = 'block';
-      renderNewAssetForm();
-    } else {
-      newAssetWrap.style.display = 'none';
-    }
+  // --- Asset picker (shared component) ---
+  const assetPicker = createAssetPicker({
+    assets,
+    preselectedId: editing ? editing.assetId : null,
+    defaultType: 'equity',
   });
-
-  if (assets.length === 0) {
-    renderNewAssetForm();
-  }
+  const assetSection = assetPicker.element;
 
   // --- Quantity / price / currency / fees ---
   const qtyField = el('div', { class: 'form-group' },
@@ -254,7 +186,7 @@ export async function renderAddTransaction(mount, params = {}) {
     const taxHint = form.querySelector('#tax-year-hint');
     if (taxHint) taxHint.textContent = `Tax year ${ukTaxYear(editing.date)}`;
     form.querySelector('#txn-account').value = editing.accountId;
-    form.querySelector('#txn-asset').value = editing.assetId;
+    // Asset is already preselected via the picker's preselectedId option
     form.querySelector('#txn-qty').value = editing.quantity;
     form.querySelector('#txn-price').value = editing.pricePerUnit;
     form.querySelector('#txn-currency').value = editing.currency || 'GBP';
@@ -268,30 +200,8 @@ export async function renderAddTransaction(mount, params = {}) {
     submitBtn.disabled = true;
 
     try {
-      // Resolve asset
-      let assetId = form.querySelector('#txn-asset').value;
-      if (assetId === '__new__') {
-        const type = form.querySelector('#new-asset-type').value;
-        const handler = getHandler(type);
-        const meta = {};
-        const asset = {
-          id: uuid(),
-          type,
-          meta,
-        };
-        for (const f of handler.formFields()) {
-          const val = form.querySelector(`#asset-${f.name}`)?.value;
-          if (val == null) continue;
-          if (['ticker', 'name', 'exchange', 'baseCurrency'].includes(f.name)) {
-            asset[f.name] = val;
-          } else {
-            meta[f.name] = val;
-          }
-        }
-        if (!asset.ticker) asset.ticker = (asset.name || 'ASSET').slice(0, 8).toUpperCase();
-        await put('assets', asset);
-        assetId = asset.id;
-      }
+      // Resolve asset via the shared picker (creates new asset if needed)
+      const { assetId } = await assetPicker.resolve();
 
       const date = form.querySelector('#txn-date').value;
       const txnType = form.querySelector('input[name="txnType"]:checked').value;

@@ -374,6 +374,57 @@ export async function renderClosedPosition(mount, params = {}) {
     );
   }
 
+  // ==================== Existing-asset shortcut ====================
+  // If the user already has an asset record matching their trade, picking it
+  // from this dropdown fills in the symbol/class/name fields and keeps them
+  // in sync with their other records (prevents TSLA vs TLSA typos creating
+  // duplicate pools).
+  const existingAssetOptions = [
+    el('option', { value: '' }, '— Enter new asset below —'),
+  ];
+  const sortedAssetsForPicker = [...assets].sort((a, b) =>
+    (a.ticker || '').localeCompare(b.ticker || ''));
+  for (const a of sortedAssetsForPicker) {
+    existingAssetOptions.push(el('option', {
+      value: a.id,
+    }, `${a.ticker || '?'}  —  ${a.name || 'Unnamed'}`));
+  }
+  const existingAssetSelect = el('select', {
+    class: 'select', id: 'cp-existing-asset',
+  }, ...existingAssetOptions);
+
+  existingAssetSelect.addEventListener('change', () => {
+    const assetId = existingAssetSelect.value;
+    if (!assetId) {
+      // User wants to create new — clear + re-enable the fields
+      symbolInput.value = '';
+      nameInput.value = '';
+      symbolInput.disabled = false;
+      classSelect.disabled = false;
+      nameInput.disabled = false;
+      return;
+    }
+    const asset = assets.find((a) => a.id === assetId);
+    if (!asset) return;
+    // Auto-populate from the existing asset and disable further edits
+    const displaySymbol = asset.ticker?.endsWith('.CFD')
+      ? asset.ticker.replace(/\.CFD$/, '')
+      : asset.ticker;
+    symbolInput.value = displaySymbol || '';
+    nameInput.value = (asset.name || '').replace(/\s*\(CFD\)$/, '');
+    if (asset.meta?.cfd) {
+      classSelect.value = asset.type === 'gold-physical' ? 'cfd-commodity' : 'cfd-stock';
+    } else {
+      classSelect.value = asset.type || 'equity';
+    }
+    symbolInput.disabled = true;
+    classSelect.disabled = true;
+    nameInput.disabled = true;
+    if (asset.baseCurrency && SUPPORTED_CURRENCIES.includes(asset.baseCurrency)) {
+      currencySelect.value = asset.baseCurrency;
+    }
+  });
+
   // Hook up listeners
   for (const input of [qtyInput, openPriceInput, closePriceInput, openFeeInput,
                         closeFeeInput, overnightFeeInput, openDateInput,
@@ -389,6 +440,16 @@ export async function renderClosedPosition(mount, params = {}) {
       el('label', { for: 'cp-account' }, 'Account'),
       accountSelect,
     ),
+    // Existing-asset picker: lets user reuse an already-created asset record
+    // (prevents accidental duplicate pools from typos).
+    assets.length > 0
+      ? el('div', { class: 'form-group' },
+          el('label', { for: 'cp-existing-asset' }, 'Existing asset (optional)'),
+          existingAssetSelect,
+          el('p', { class: 'form-group__hint' },
+            'Pick an asset you\'ve already traded to keep records consistent, or leave as "Enter new asset below" and fill in the fields manually.'),
+        )
+      : null,
     el('div', { class: 'form-row' },
       el('div', { class: 'form-group' },
         el('label', { for: 'cp-symbol' }, 'Symbol / ticker'),
