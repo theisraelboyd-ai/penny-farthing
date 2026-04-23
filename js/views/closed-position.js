@@ -1,28 +1,49 @@
-/* Closed Position entry view.
+/* Closed Position entry view — currency-aware version.
  *
  * Purpose: record already-matched disposals from platforms that do their
- * own lot matching (eToro, Trading 212, Robinhood). The user enters:
- *   - Open date, close date
- *   - Symbol
- *   - GBP proceeds (or native + currency; we can FX them)
- *   - GBP cost basis
- *   - Account (wrapper determines tax treatment)
- *   - CFD flag (ring-fenced vs standard CGT pool)
+ * own lot matching (eToro, Trading 212, Robinhood) in a way that is
+ * HMRC-correct for foreign-currency trades.
  *
- * We synthesise a paired buy+sell that lands in the pool engine cleanly:
- *   - Buy on open date with cost basis as total gross
- *   - Sell on close date with proceeds as total gross
- *   - A unique asset is created per closed-position batch if using CFD mode
- *     so CFD gains/losses don't pool with your spot stock holdings
+ * METHODOLOGY:
+ *   For UK residents disposing of foreign-currency-denominated assets,
+ *   HMRC requires both the acquisition cost AND the disposal proceeds to
+ *   be converted to GBP at the spot rate on their respective dates. You
+ *   do NOT use a single FX rate or a platform-supplied "converted profit"
+ *   figure. See HMRC manual CG78300 and TCGA 1992 for detail.
  *
- * This is one-way: once entered, edit via the Activity view or delete both
- * transactions individually.
+ *   This form captures:
+ *     - Asset quantity
+ *     - Trade currency (USD, EUR, CAD, GBP)
+ *     - Open price per unit (native currency)
+ *     - Close price per unit (native currency)
+ *     - Open-side spread fee (native currency) — treated as incidental
+ *       acquisition cost, added to cost basis
+ *     - Close-side market spread (native currency) — incidental disposal
+ *       cost, subtracts from proceeds
+ *     - Overnight / holding fees (native currency) — reduces proceeds
+ *
+ *   App then:
+ *     - Fetches GBP/CCY rate on open date (ECB reference rate, via Frankfurter)
+ *     - Fetches GBP/CCY rate on close date (ditto)
+ *     - Computes:
+ *         costBasisGbp    = qty × openPrice × fxOpen + openFee × fxOpen
+ *         proceedsGbp     = qty × closePrice × fxClose − closeFee × fxClose
+ *                           − overnightFees × fxClose
+ *         gain            = proceedsGbp − costBasisGbp
+ *         priceMovementGbp = qty × (closePrice − openPrice) × fxClose
+ *         fxMovementGbp   = qty × openPrice × (fxClose − fxOpen)
+ *       (decomposition for user insight; tax cares only about `gain`)
+ *
+ *   The rate source is stored on each transaction so audit trail is defensible.
  */
 
-import { el, formatCurrency, toast } from '../ui.js';
+import { el, toast } from '../ui.js';
 import { getAll, put, uuid } from '../storage/indexeddb.js';
 import { ukTaxYear } from '../storage/schema.js';
 import { navigate } from '../router.js';
+import { getFxRate } from '../engine/fx.js';
+
+const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CHF'];
 
 export async function renderClosedPosition(mount) {
   const [accounts, assets] = await Promise.all([
@@ -34,7 +55,7 @@ export async function renderClosedPosition(mount) {
     el('div', { class: 'view-header' },
       el('h2', {}, 'Record closed position'),
       el('p', {},
-        'For already-matched disposals from eToro, Trading 212, or similar. Enter open + close dates and totals — the app records the buy and sell in one go.'),
+        'For matched disposals from eToro, Trading 212 or similar. Enter the trade in its native currency — the app handles FX conversion using ECB reference rates at open and close dates (HMRC-compliant).'),
     ),
   );
 
@@ -53,22 +74,9 @@ export async function renderClosedPosition(mount) {
     return;
   }
 
-  // ----- Build the form -----
+  // ==================== Form fields ====================
+
   const form = el('form', { class: 'stacked-form' });
-
-  // Symbol
-  const symbolInput = el('input', {
-    type: 'text', id: 'cp-symbol', class: 'input',
-    placeholder: 'TSLA, NVDA, RGTI …',
-    required: true, autocomplete: 'off',
-  });
-
-  // Asset name (optional, helpful for CFDs and one-off tickers)
-  const nameInput = el('input', {
-    type: 'text', id: 'cp-name', class: 'input',
-    placeholder: 'Tesla Motors Inc (optional)',
-    autocomplete: 'off',
-  });
 
   // Account
   const accountSelect = el('select', { class: 'select', id: 'cp-account', required: true },
@@ -76,7 +84,19 @@ export async function renderClosedPosition(mount) {
       el('option', { value: a.id }, `${a.name} · ${a.wrapper} · ${a.platform}`)),
   );
 
-  // Asset class — equity / etf / CFD / crypto
+  // Symbol + name
+  const symbolInput = el('input', {
+    type: 'text', id: 'cp-symbol', class: 'input',
+    placeholder: 'TSLA, NVDA, RGTI …',
+    required: true, autocomplete: 'off',
+  });
+  const nameInput = el('input', {
+    type: 'text', id: 'cp-name', class: 'input',
+    placeholder: 'Tesla Motors Inc (optional)',
+    autocomplete: 'off',
+  });
+
+  // Asset class
   const classSelect = el('select', { class: 'select', id: 'cp-class', required: true },
     el('option', { value: 'equity' }, 'Equity (stocks — CGT pool)'),
     el('option', { value: 'etf' }, 'ETF/Fund — CGT pool'),
@@ -85,7 +105,13 @@ export async function renderClosedPosition(mount) {
     el('option', { value: 'crypto' }, 'Crypto — separate pool'),
   );
 
-  // Open date, close date
+  // Currency
+  const currencySelect = el('select', { class: 'select', id: 'cp-currency', required: true },
+    ...SUPPORTED_CURRENCIES.map((c) =>
+      el('option', { value: c, ...(c === 'USD' ? { selected: true } : {}) }, c)),
+  );
+
+  // Dates
   const openDateInput = el('input', {
     type: 'date', id: 'cp-open-date', class: 'input', required: true,
   });
@@ -97,66 +123,186 @@ export async function renderClosedPosition(mount) {
   const qtyInput = el('input', {
     type: 'number', id: 'cp-qty', class: 'input',
     step: 'any', min: '0', required: true,
-    placeholder: '10.5',
+    placeholder: '10.506105',
   });
 
-  // Cost basis and proceeds in GBP
-  const costInput = el('input', {
-    type: 'number', id: 'cp-cost', class: 'input',
-    step: '0.01', required: true,
-    placeholder: '1495.34',
+  // Prices and fees (all in native currency)
+  const openPriceInput = el('input', {
+    type: 'number', id: 'cp-open-price', class: 'input',
+    step: 'any', required: true,
+    placeholder: '135.94',
   });
-  const proceedsInput = el('input', {
-    type: 'number', id: 'cp-proceeds', class: 'input',
-    step: '0.01', required: true,
-    placeholder: '2076.16',
+  const closePriceInput = el('input', {
+    type: 'number', id: 'cp-close-price', class: 'input',
+    step: 'any', required: true,
+    placeholder: '191.22',
   });
-
-  // Fees
-  const feesInput = el('input', {
-    type: 'number', id: 'cp-fees', class: 'input',
-    step: '0.01', value: '0',
-    placeholder: '0',
+  const openFeeInput = el('input', {
+    type: 'number', id: 'cp-open-fee', class: 'input',
+    step: 'any', value: '0',
+    placeholder: '0.00',
   });
-
-  // Live P&L readout
-  const pnlReadout = el('div', {
-    style: {
-      padding: 'var(--space-3)',
-      background: 'var(--surface-2)',
-      borderRadius: 'var(--radius-md)',
-      fontFamily: 'var(--font-mono)',
-      fontSize: 'var(--f-sm)',
-      marginTop: 'var(--space-2)',
-    },
-  }, 'P&L: —');
-
-  const updatePnl = () => {
-    const cost = parseFloat(costInput.value || '0');
-    const proceeds = parseFloat(proceedsInput.value || '0');
-    const fees = parseFloat(feesInput.value || '0');
-    if (isNaN(cost) || isNaN(proceeds)) {
-      pnlReadout.textContent = 'P&L: —';
-      pnlReadout.style.color = 'var(--text-muted)';
-      return;
-    }
-    const pnl = proceeds - cost - fees;
-    const sign = pnl >= 0 ? '+' : '';
-    pnlReadout.textContent = `P&L: ${sign}£${pnl.toFixed(2)}`;
-    pnlReadout.style.color = pnl >= 0 ? 'var(--gain)' : 'var(--loss)';
-  };
-  costInput.addEventListener('input', updatePnl);
-  proceedsInput.addEventListener('input', updatePnl);
-  feesInput.addEventListener('input', updatePnl);
+  const closeFeeInput = el('input', {
+    type: 'number', id: 'cp-close-fee', class: 'input',
+    step: 'any', value: '0',
+    placeholder: '0.21',
+  });
+  const overnightFeeInput = el('input', {
+    type: 'number', id: 'cp-overnight', class: 'input',
+    step: 'any', value: '0',
+    placeholder: '0.00',
+  });
 
   // Notes
   const notesInput = el('textarea', {
     id: 'cp-notes', class: 'input',
-    placeholder: 'Position ID 2960821389 (optional — useful for cross-reference)',
+    placeholder: 'Position ID 3028670304 (optional — useful for cross-reference)',
     rows: 2,
   });
 
-  // ----- Layout -----
+  // ==================== Preview panel ====================
+
+  const previewPanel = el('div', {
+    style: {
+      padding: 'var(--space-4)',
+      background: 'var(--surface-2)',
+      borderRadius: 'var(--radius-md)',
+      marginTop: 'var(--space-3)',
+      fontSize: 'var(--f-sm)',
+      lineHeight: '1.6',
+    },
+  }, 'Enter quantity, prices and dates to see GBP conversion preview…');
+
+  // Update the preview whenever any relevant field changes.
+  // Debounced because it hits the FX API.
+  let previewTimer = null;
+  const schedulePreview = () => {
+    clearTimeout(previewTimer);
+    previewTimer = setTimeout(updatePreview, 350);
+  };
+
+  async function updatePreview() {
+    const currency = currencySelect.value;
+    const qty = parseFloat(qtyInput.value);
+    const openPrice = parseFloat(openPriceInput.value);
+    const closePrice = parseFloat(closePriceInput.value);
+    const openFee = parseFloat(openFeeInput.value || '0');
+    const closeFee = parseFloat(closeFeeInput.value || '0');
+    const overnightFee = parseFloat(overnightFeeInput.value || '0');
+    const openDate = openDateInput.value;
+    const closeDate = closeDateInput.value;
+
+    if (!qty || !openPrice || !closePrice || !openDate || !closeDate) {
+      previewPanel.textContent = 'Enter quantity, prices and dates to see GBP conversion preview…';
+      previewPanel.style.color = 'var(--text-muted)';
+      return;
+    }
+    if (qty <= 0 || openDate > closeDate) {
+      previewPanel.textContent = 'Check dates and quantity — dates must be in order, quantity positive.';
+      previewPanel.style.color = 'var(--loss)';
+      return;
+    }
+
+    previewPanel.innerHTML = '';
+    previewPanel.append(el('div', { class: 'text-muted' }, 'Fetching FX rates…'));
+
+    let fxOpen, fxClose;
+    try {
+      [fxOpen, fxClose] = await Promise.all([
+        getFxRate(currency, openDate),
+        getFxRate(currency, closeDate),
+      ]);
+    } catch (err) {
+      previewPanel.innerHTML = '';
+      previewPanel.append(
+        el('div', { style: { color: 'var(--loss)' } }, `FX fetch error: ${err.message}`));
+      return;
+    }
+
+    if (fxOpen === null || fxClose === null) {
+      previewPanel.innerHTML = '';
+      previewPanel.append(
+        el('div', { style: { color: 'var(--warn)' } },
+          `FX rate unavailable for ${currency}→GBP on one or both dates. `,
+          'Check dates or enter a manual rate on the transactions after saving.'),
+      );
+      return;
+    }
+
+    // Compute cost basis, proceeds, gain, and the price/FX decomposition
+    const costNative = qty * openPrice + openFee;
+    const proceedsNative = qty * closePrice - closeFee - overnightFee;
+    const costGbp = costNative * fxOpen;
+    const proceedsGbp = proceedsNative * fxClose;
+    const gainGbp = proceedsGbp - costGbp;
+
+    // Decomposition (informational): how much of the gain is price vs FX?
+    // Using close FX as the "constant" to isolate:
+    //   Price-only gain if FX hadn't moved: qty*(close-open)*fxOpen
+    //   FX-only gain if price hadn't moved: qty*open*(fxClose-fxOpen)
+    //   Residual (interaction term): small, usually pennies
+    const priceMovementGbp = qty * (closePrice - openPrice) * fxOpen;
+    const fxMovementGbp = qty * openPrice * (fxClose - fxOpen);
+    const crossGbp = gainGbp - priceMovementGbp - fxMovementGbp;
+    // (crossGbp is the interaction: price_change × fx_change × qty, usually tiny)
+
+    const gainTone = gainGbp >= 0 ? 'gain' : 'loss';
+    const gainSign = gainGbp >= 0 ? '+' : '';
+
+    previewPanel.innerHTML = '';
+    previewPanel.append(
+      // Cost line
+      el('div', { style: { marginBottom: 'var(--space-2)' } },
+        el('strong', {}, `Cost basis: £${costGbp.toFixed(2)}`),
+        el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+          `${qty} × ${openPrice} ${currency}`,
+          openFee > 0 ? ` + ${openFee} ${currency} fees` : '',
+          ` = ${costNative.toFixed(2)} ${currency}, `,
+          `at ${fxOpen.toFixed(5)} GBP/${currency} (${openDate})`),
+      ),
+      // Proceeds line
+      el('div', { style: { marginBottom: 'var(--space-2)' } },
+        el('strong', {}, `Proceeds: £${proceedsGbp.toFixed(2)}`),
+        el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+          `${qty} × ${closePrice} ${currency}`,
+          closeFee > 0 ? ` − ${closeFee} fees` : '',
+          overnightFee > 0 ? ` − ${overnightFee} holding` : '',
+          ` = ${proceedsNative.toFixed(2)} ${currency}, `,
+          `at ${fxClose.toFixed(5)} GBP/${currency} (${closeDate})`),
+      ),
+      // Gain line
+      el('div', {
+        style: {
+          marginTop: 'var(--space-3)',
+          paddingTop: 'var(--space-2)',
+          borderTop: '1px solid var(--border)',
+          fontSize: 'var(--f-md)',
+        }
+      },
+        el('strong', { class: gainTone }, `Gain/Loss: ${gainSign}£${gainGbp.toFixed(2)}`),
+      ),
+      // Decomposition (small, informational)
+      currency === 'GBP' ? null : el('div', {
+        class: 'text-faint',
+        style: { fontSize: 'var(--f-xs)', marginTop: 'var(--space-2)' }
+      },
+        `of which: price movement ${priceMovementGbp >= 0 ? '+' : ''}£${priceMovementGbp.toFixed(2)}, `,
+        `FX movement ${fxMovementGbp >= 0 ? '+' : ''}£${fxMovementGbp.toFixed(2)}`,
+        Math.abs(crossGbp) > 0.01 ? `, interaction ${crossGbp >= 0 ? '+' : ''}£${crossGbp.toFixed(2)}` : '',
+      ),
+    );
+  }
+
+  // Hook up listeners
+  for (const input of [qtyInput, openPriceInput, closePriceInput, openFeeInput,
+                        closeFeeInput, overnightFeeInput, openDateInput,
+                        closeDateInput, currencySelect]) {
+    input.addEventListener('input', schedulePreview);
+    input.addEventListener('change', schedulePreview);
+  }
+
+  // ==================== Layout ====================
+
   form.append(
     el('div', { class: 'form-group' },
       el('label', { for: 'cp-account' }, 'Account'),
@@ -171,12 +317,24 @@ export async function renderClosedPosition(mount) {
         el('label', { for: 'cp-class' }, 'Asset class'),
         classSelect,
         el('p', { class: 'form-group__hint' },
-          'CFDs are ring-fenced: CFD losses can only offset CFD gains, per TCGA 1992 s.143.'),
+          'CFDs are ring-fenced per TCGA 1992 s.143.'),
       ),
     ),
     el('div', { class: 'form-group' },
       el('label', { for: 'cp-name' }, 'Full name (optional)'),
       nameInput,
+    ),
+    el('div', { class: 'form-row' },
+      el('div', { class: 'form-group' },
+        el('label', { for: 'cp-currency' }, 'Trade currency'),
+        currencySelect,
+        el('p', { class: 'form-group__hint' },
+          'The currency the position opens and closes in. eToro is typically USD.'),
+      ),
+      el('div', { class: 'form-group' },
+        el('label', { for: 'cp-qty' }, 'Quantity / units'),
+        qtyInput,
+      ),
     ),
     el('div', { class: 'form-row' },
       el('div', { class: 'form-group' },
@@ -188,31 +346,45 @@ export async function renderClosedPosition(mount) {
         closeDateInput,
       ),
     ),
-    el('div', { class: 'form-group' },
-      el('label', { for: 'cp-qty' }, 'Quantity (units / contracts)'),
-      qtyInput,
-    ),
+    el('h3', { style: { fontSize: 'var(--f-md)', marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' } },
+      'Prices (native currency)'),
     el('div', { class: 'form-row' },
       el('div', { class: 'form-group' },
-        el('label', { for: 'cp-cost' }, 'Cost basis (GBP)'),
-        costInput,
+        el('label', { for: 'cp-open-price' }, 'Open rate per unit'),
+        openPriceInput,
         el('p', { class: 'form-group__hint' },
-          'Total paid to open including fees.'),
+          'eToro "Open Rate" column — the price you paid per share.'),
       ),
       el('div', { class: 'form-group' },
-        el('label', { for: 'cp-proceeds' }, 'Proceeds (GBP)'),
-        proceedsInput,
+        el('label', { for: 'cp-close-price' }, 'Close rate per unit'),
+        closePriceInput,
         el('p', { class: 'form-group__hint' },
-          'Total received on close.'),
+          'eToro "Close Rate" column — the price you sold at.'),
       ),
     ),
-    el('div', { class: 'form-group' },
-      el('label', { for: 'cp-fees' }, 'Additional fees (GBP)'),
-      feesInput,
-      el('p', { class: 'form-group__hint' },
-        'Overnight fees, spread fees etc. Already-included fees can stay at 0.'),
+    el('h3', { style: { fontSize: 'var(--f-md)', marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' } },
+      'Fees (native currency, optional)'),
+    el('div', { class: 'form-row' },
+      el('div', { class: 'form-group' },
+        el('label', { for: 'cp-open-fee' }, 'Opening spread fee'),
+        openFeeInput,
+        el('p', { class: 'form-group__hint' }, 'Usually 0 on eToro for stocks.'),
+      ),
+      el('div', { class: 'form-group' },
+        el('label', { for: 'cp-close-fee' }, 'Closing spread fee'),
+        closeFeeInput,
+        el('p', { class: 'form-group__hint' }, 'eToro "Market Spread" column.'),
+      ),
+      el('div', { class: 'form-group' },
+        el('label', { for: 'cp-overnight' }, 'Overnight/holding fees'),
+        overnightFeeInput,
+        el('p', { class: 'form-group__hint' },
+          'CFDs only. Sum of nightly charges.'),
+      ),
     ),
-    pnlReadout,
+    el('h3', { style: { fontSize: 'var(--f-md)', marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' } },
+      'GBP conversion preview'),
+    previewPanel,
     el('div', { class: 'form-group', style: { marginTop: 'var(--space-4)' } },
       el('label', { for: 'cp-notes' }, 'Notes'),
       notesInput,
@@ -228,40 +400,53 @@ export async function renderClosedPosition(mount) {
 
   form.append(el('div', { class: 'button-row', style: { marginTop: 'var(--space-5)' } }, submitBtn, cancelBtn));
 
+  // ==================== Submit ====================
+
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     submitBtn.disabled = true;
-    submitBtn.textContent = 'Recording…';
+    submitBtn.textContent = 'Saving…';
 
     try {
       const symbol = symbolInput.value.trim().toUpperCase();
       const name = nameInput.value.trim() || symbol;
       const accountId = accountSelect.value;
       const assetClass = classSelect.value;
+      const currency = currencySelect.value;
       const openDate = openDateInput.value;
       const closeDate = closeDateInput.value;
-      const quantity = parseFloat(qtyInput.value);
-      const cost = parseFloat(costInput.value);
-      const proceeds = parseFloat(proceedsInput.value);
-      const fees = parseFloat(feesInput.value || '0');
+      const qty = parseFloat(qtyInput.value);
+      const openPrice = parseFloat(openPriceInput.value);
+      const closePrice = parseFloat(closePriceInput.value);
+      const openFee = parseFloat(openFeeInput.value || '0');
+      const closeFee = parseFloat(closeFeeInput.value || '0');
+      const overnightFee = parseFloat(overnightFeeInput.value || '0');
       const notes = notesInput.value.trim();
 
       if (!symbol) throw new Error('Symbol required');
       if (!openDate || !closeDate) throw new Error('Both dates required');
       if (openDate > closeDate) throw new Error('Open date must be on or before close date');
-      if (quantity <= 0) throw new Error('Quantity must be positive');
-      if (cost < 0 || proceeds < 0) throw new Error('Cost and proceeds must be non-negative');
+      if (qty <= 0) throw new Error('Quantity must be positive');
+      if (openPrice <= 0 || closePrice <= 0) throw new Error('Prices must be positive');
 
-      // Map asset class to engine type + CFD flag
-      // For CFDs we create a separate asset record with a distinct ticker suffix
-      // so the pool engine keeps them ring-fenced from stock pools of the same symbol.
+      // Fetch FX rates for both dates. These become the fxRate on the
+      // corresponding transactions, marked as 'auto' so the pool engine
+      // won't re-fetch them (they're already correct for this specific date).
+      let fxOpen = 1, fxClose = 1;
+      if (currency !== 'GBP') {
+        fxOpen = await getFxRate(currency, openDate);
+        fxClose = await getFxRate(currency, closeDate);
+        if (fxOpen === null) throw new Error(`FX rate for ${currency}→GBP unavailable on open date ${openDate}. Try again in a moment, or enter manually later.`);
+        if (fxClose === null) throw new Error(`FX rate for ${currency}→GBP unavailable on close date ${closeDate}.`);
+      }
+
+      // ===== Asset creation / lookup =====
       const isCfd = assetClass.startsWith('cfd-');
       const engineType = isCfd
         ? (assetClass === 'cfd-commodity' ? 'gold-physical' : 'equity')
         : (assetClass === 'etf' ? 'etf' : assetClass === 'crypto' ? 'crypto' : 'equity');
       const storedTicker = isCfd ? `${symbol}.CFD` : symbol;
 
-      // Find or create the asset
       const existingAsset = (await getAll('assets')).find(
         (a) => a.ticker?.toUpperCase() === storedTicker.toUpperCase()
       );
@@ -272,33 +457,35 @@ export async function renderClosedPosition(mount) {
           type: engineType,
           ticker: storedTicker,
           name: isCfd ? `${name} (CFD)` : name,
-          baseCurrency: 'GBP',  // we record in GBP directly
+          baseCurrency: currency,
           exchange: isCfd ? 'CFD' : 'UNKNOWN',
           meta: isCfd ? { cfd: true } : {},
         };
         await put('assets', asset);
       }
 
-      // Build buy and sell transactions.
-      // Price per unit is cost/qty for the buy, proceeds/qty for the sell.
-      // Fees sit on the sell side (reducing proceeds) — cleaner for CGT audit.
-      const buyPrice = cost / quantity;
-      const sellPrice = proceeds / quantity;
-
+      // ===== Build transactions =====
+      // Fees are folded into the "effective" price per unit so the pool engine
+      // gets the numbers it needs. Specifically:
+      //   Buy side: cost basis = qty × pricePerUnit + fees (engine adds fees on).
+      //   Sell side: proceeds  = qty × pricePerUnit − fees (engine subtracts fees).
+      // So we pass the raw eToro open/close rate as pricePerUnit, and set fees
+      // to the opening/closing spread (which eToro reports in native currency).
+      // Overnight fees are added to closing fees (they also reduce proceeds).
       const buyTxn = {
         id: uuid(),
         date: openDate,
         type: 'buy',
         assetId: asset.id,
         accountId,
-        quantity,
-        pricePerUnit: buyPrice,
-        currency: 'GBP',
-        fxRate: 1,
-        fxSource: 'trivial',
-        fees: 0,
+        quantity: qty,
+        pricePerUnit: openPrice,
+        currency,
+        fxRate: fxOpen,
+        fxSource: currency === 'GBP' ? 'trivial' : 'auto',
+        fees: openFee,
         taxYear: ukTaxYear(openDate),
-        notes: notes || `Matched pair (closed position)`,
+        notes: notes || '',
         createdAt: new Date().toISOString(),
         sourceTag: 'closed-position',
       };
@@ -308,25 +495,28 @@ export async function renderClosedPosition(mount) {
         type: 'sell',
         assetId: asset.id,
         accountId,
-        quantity,
-        pricePerUnit: sellPrice,
-        currency: 'GBP',
-        fxRate: 1,
-        fxSource: 'trivial',
-        fees,
+        quantity: qty,
+        pricePerUnit: closePrice,
+        currency,
+        fxRate: fxClose,
+        fxSource: currency === 'GBP' ? 'trivial' : 'auto',
+        fees: closeFee + overnightFee,
         taxYear: ukTaxYear(closeDate),
-        notes: notes || `Matched pair (closed position)`,
+        notes: notes || '',
         createdAt: new Date().toISOString(),
         sourceTag: 'closed-position',
-        pairId: buyTxn.id,  // link for future audit / delete-as-pair
+        pairId: buyTxn.id,
       };
       buyTxn.pairId = sellTxn.id;
 
       await put('transactions', buyTxn);
       await put('transactions', sellTxn);
 
-      const pnl = proceeds - cost - fees;
-      toast(`${symbol}: ${pnl >= 0 ? '+' : ''}£${pnl.toFixed(2)} recorded`);
+      // Compute final gain for toast message
+      const costGbp = (qty * openPrice + openFee) * fxOpen;
+      const proceedsGbp = (qty * closePrice - closeFee - overnightFee) * fxClose;
+      const gainGbp = proceedsGbp - costGbp;
+      toast(`${symbol}: ${gainGbp >= 0 ? '+' : ''}£${gainGbp.toFixed(2)} recorded`);
       navigate('/transactions');
     } catch (err) {
       console.error(err);
@@ -336,7 +526,5 @@ export async function renderClosedPosition(mount) {
     }
   });
 
-  mount.append(
-    el('section', { class: 'ledger-page' }, form),
-  );
+  mount.append(el('section', { class: 'ledger-page' }, form));
 }
