@@ -12,9 +12,28 @@ import { listAssetTypes, getHandler } from '../assets/registry.js';
 import { ukTaxYear } from '../storage/schema.js';
 import { navigate } from '../router.js';
 
-export async function renderAddTransaction(mount) {
+export async function renderAddTransaction(mount, params = {}) {
   const assets = await getAll('assets');
   const accounts = await getAll('accounts');
+
+  // If editing, pull the target transaction so we can prefill the form
+  let editing = null;
+  if (params.edit) {
+    const all = await getAll('transactions');
+    const target = all.find((t) => t.id === params.edit);
+    if (!target) {
+      toast('Transaction not found', { error: true });
+      navigate('/transactions');
+      return;
+    }
+    // If this transaction is paired, send the user to the Closed Position
+    // edit flow instead — it updates both halves atomically.
+    if (target.pairId) {
+      navigate(`/closed?edit=${encodeURIComponent(target.id)}`);
+      return;
+    }
+    editing = target;
+  }
 
   // If the user has no accounts yet, gently push them to create one first.
   if (accounts.length === 0) {
@@ -40,7 +59,7 @@ export async function renderAddTransaction(mount) {
 
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
-      el('h2', {}, 'Record a transaction'),
+      el('h2', {}, editing ? 'Edit transaction' : 'Record a transaction'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
       'Enter a buy, sell, dividend, or fee. The tax year is set automatically from the date.'),
@@ -217,14 +236,32 @@ export async function renderAddTransaction(mount) {
   );
 
   // --- Submit ---
-  const submitBtn = el('button', { type: 'submit', class: 'button button--full' }, 'Record entry');
-  const cancelBtn = el('button', { type: 'button', class: 'button button--ghost button--full', onclick: () => navigate('/dashboard') }, 'Cancel');
+  const submitBtn = el('button', { type: 'submit', class: 'button button--full' },
+    editing ? 'Update entry' : 'Record entry');
+  const cancelBtn = el('button', { type: 'button', class: 'button button--ghost button--full',
+    onclick: () => navigate(editing ? '/transactions' : '/dashboard') }, 'Cancel');
 
   const form = el('form', { class: 'txn-form', autocomplete: 'off' },
     typeField, dateField, accountField, assetSection,
     qtyField, priceRow, fxRow, notesField,
     el('div', { class: 'button-row' }, submitBtn, cancelBtn),
   );
+
+  // Prefill when editing
+  if (editing) {
+    form.querySelector(`input[name="txnType"][value="${editing.type}"]`)?.click();
+    form.querySelector('#txn-date').value = editing.date;
+    const taxHint = form.querySelector('#tax-year-hint');
+    if (taxHint) taxHint.textContent = `Tax year ${ukTaxYear(editing.date)}`;
+    form.querySelector('#txn-account').value = editing.accountId;
+    form.querySelector('#txn-asset').value = editing.assetId;
+    form.querySelector('#txn-qty').value = editing.quantity;
+    form.querySelector('#txn-price').value = editing.pricePerUnit;
+    form.querySelector('#txn-currency').value = editing.currency || 'GBP';
+    form.querySelector('#txn-fx').value = editing.fxRate ?? 1;
+    form.querySelector('#txn-fees').value = editing.fees ?? 0;
+    form.querySelector('#txn-notes').value = editing.notes || '';
+  }
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -279,8 +316,9 @@ export async function renderAddTransaction(mount) {
         fxSource = userTouchedRate ? 'manual' : 'auto';
       }
 
+      // Preserve ID and createdAt when editing
       const txn = {
-        id: uuid(),
+        id: editing ? editing.id : uuid(),
         date,
         type: txnType,
         assetId,
@@ -289,15 +327,23 @@ export async function renderAddTransaction(mount) {
         pricePerUnit,
         currency,
         fxRate,
-        fxSource,
+        fxSource: editing && editing.fxSource === 'manual' && fxRate === editing.fxRate
+          ? 'manual'  // preserve manual-rate marker if user didn't touch it
+          : fxSource,
         fees,
         taxYear: ukTaxYear(date),
         notes,
-        createdAt: new Date().toISOString(),
+        createdAt: editing ? editing.createdAt : new Date().toISOString(),
+        updatedAt: editing ? new Date().toISOString() : undefined,
       };
+      // Preserve importSource / sourceTag from original if present
+      if (editing) {
+        if (editing.importSource) txn.importSource = editing.importSource;
+        if (editing.sourceTag) txn.sourceTag = editing.sourceTag;
+      }
 
       await put('transactions', txn);
-      toast(`Recorded ${txnType} · ${quantity} units`);
+      toast(editing ? `Updated ${txnType} · ${quantity} units` : `Recorded ${txnType} · ${quantity} units`);
       navigate('/transactions');
     } catch (err) {
       console.error(err);

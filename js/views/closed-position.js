@@ -38,24 +38,61 @@
  */
 
 import { el, toast } from '../ui.js';
-import { getAll, put, uuid } from '../storage/indexeddb.js';
+import { getAll, get, put, uuid } from '../storage/indexeddb.js';
 import { ukTaxYear } from '../storage/schema.js';
 import { navigate } from '../router.js';
 import { getFxRate } from '../engine/fx.js';
 
 const SUPPORTED_CURRENCIES = ['USD', 'EUR', 'CAD', 'GBP', 'AUD', 'JPY', 'CHF'];
 
-export async function renderClosedPosition(mount) {
-  const [accounts, assets] = await Promise.all([
+export async function renderClosedPosition(mount, params = {}) {
+  const [accounts, assets, settings] = await Promise.all([
     getAll('accounts'),
     getAll('assets'),
+    get('settings', 'main'),
   ]);
+
+  // If params.edit is set, load the existing pair of transactions for editing
+  let editing = null;
+  if (params.edit) {
+    const allTxns = await getAll('transactions');
+    const target = allTxns.find((t) => t.id === params.edit);
+    if (target) {
+      // Find its partner (if it has one)
+      const partnerId = target.pairId;
+      const partner = partnerId ? allTxns.find((t) => t.id === partnerId) : null;
+      if (partner) {
+        // Order them: buy first, sell second
+        const buy = target.type === 'buy' ? target : partner;
+        const sell = target.type === 'sell' ? target : partner;
+        editing = { buy, sell };
+      } else {
+        // Paired edit requested but no partner — could be data corruption or
+        // an old single transaction. Warn and fall back to regular edit view.
+        toast('This transaction has no matching pair — use the regular edit screen', { error: true });
+        navigate(`/edit?id=${encodeURIComponent(target.id)}`);
+        return;
+      }
+    } else {
+      toast('Transaction not found', { error: true });
+      navigate('/transactions');
+      return;
+    }
+  }
+
+  // Remember last-used account for closed-position entry so consecutive rows
+  // default to the same account. First use has no default — prevents the
+  // "all my eToro trades got entered under IBKR" mistake from recurring.
+  const lastUsedAccountId = editing ? editing.buy.accountId
+    : (settings?.lastClosedPositionAccountId || null);
 
   mount.append(
     el('div', { class: 'view-header' },
-      el('h2', {}, 'Record closed position'),
+      el('h2', {}, editing ? 'Edit closed position' : 'Record closed position'),
       el('p', {},
-        'For matched disposals from eToro, Trading 212 or similar. Enter the trade in its native currency — the app handles FX conversion using ECB reference rates at open and close dates (HMRC-compliant).'),
+        editing
+          ? 'Adjust the details below. Both the open and close transactions will be updated together.'
+          : 'For matched disposals from eToro, Trading 212 or similar. Enter the trade in its native currency — the app handles FX conversion using ECB reference rates at open and close dates (HMRC-compliant).'),
     ),
   );
 
@@ -78,11 +115,22 @@ export async function renderClosedPosition(mount) {
 
   const form = el('form', { class: 'stacked-form' });
 
-  // Account
-  const accountSelect = el('select', { class: 'select', id: 'cp-account', required: true },
-    ...accounts.map((a) =>
-      el('option', { value: a.id }, `${a.name} · ${a.wrapper} · ${a.platform}`)),
-  );
+  // Account — no default on first use, remembered from previous save after that
+  const accountOptions = [];
+  if (!lastUsedAccountId) {
+    accountOptions.push(el('option', {
+      value: '', disabled: true, selected: true,
+    }, 'Choose account…'));
+  }
+  for (const a of accounts) {
+    const isLast = a.id === lastUsedAccountId;
+    accountOptions.push(el('option', {
+      value: a.id, ...(isLast ? { selected: true } : {}),
+    }, `${a.name} · ${a.wrapper} · ${a.platform}`));
+  }
+  const accountSelect = el('select', {
+    class: 'select', id: 'cp-account', required: true,
+  }, ...accountOptions);
 
   // Symbol + name
   const symbolInput = el('input', {
@@ -159,6 +207,39 @@ export async function renderClosedPosition(mount) {
     placeholder: 'Position ID 3028670304 (optional — useful for cross-reference)',
     rows: 2,
   });
+
+  // Prefill form fields if editing an existing pair
+  if (editing) {
+    const { buy, sell } = editing;
+    const asset = assets.find((a) => a.id === buy.assetId);
+    if (asset) {
+      // Strip any .CFD suffix for symbol display — the class dropdown controls whether
+      // we round-trip the suffix back on save
+      const displaySymbol = asset.ticker?.endsWith('.CFD')
+        ? asset.ticker.replace(/\.CFD$/, '')
+        : asset.ticker;
+      symbolInput.value = displaySymbol || '';
+      nameInput.value = (asset.name || '').replace(/\s*\(CFD\)$/, '');
+      // Map asset type + CFD flag back to class select
+      if (asset.meta?.cfd) {
+        classSelect.value = asset.type === 'gold-physical' ? 'cfd-commodity' : 'cfd-stock';
+      } else {
+        classSelect.value = asset.type || 'equity';
+      }
+    }
+    currencySelect.value = buy.currency || 'USD';
+    openDateInput.value = buy.date;
+    closeDateInput.value = sell.date;
+    qtyInput.value = buy.quantity;
+    openPriceInput.value = buy.pricePerUnit;
+    closePriceInput.value = sell.pricePerUnit;
+    openFeeInput.value = buy.fees || 0;
+    // Sell-side stores close fee + overnight fee combined; we can't split
+    // them back reliably, so put the total in closeFee and leave overnight 0.
+    closeFeeInput.value = sell.fees || 0;
+    overnightFeeInput.value = 0;
+    notesInput.value = buy.notes || '';
+  }
 
   // ==================== Preview panel ====================
 
@@ -384,6 +465,9 @@ export async function renderClosedPosition(mount) {
     ),
     el('h3', { style: { fontSize: 'var(--f-md)', marginTop: 'var(--space-4)', marginBottom: 'var(--space-2)' } },
       'GBP conversion preview'),
+    el('p', { class: 'form-group__hint', style: { marginBottom: 'var(--space-3)' } },
+      'Cost and proceeds are converted separately using ECB reference rates on their respective dates (HMRC method). ',
+      'Some trading platforms apply only a close-date rate to the native-currency profit, so their reported GBP figure may differ from ours when the currency moves between open and close.'),
     previewPanel,
     el('div', { class: 'form-group', style: { marginTop: 'var(--space-4)' } },
       el('label', { for: 'cp-notes' }, 'Notes'),
@@ -391,7 +475,8 @@ export async function renderClosedPosition(mount) {
     ),
   );
 
-  const submitBtn = el('button', { type: 'submit', class: 'button button--full' }, 'Record closed position');
+  const submitBtn = el('button', { type: 'submit', class: 'button button--full' },
+    editing ? 'Update closed position' : 'Record closed position');
   const cancelBtn = el('button', {
     type: 'button',
     class: 'button button--ghost button--full',
@@ -465,15 +550,14 @@ export async function renderClosedPosition(mount) {
       }
 
       // ===== Build transactions =====
-      // Fees are folded into the "effective" price per unit so the pool engine
-      // gets the numbers it needs. Specifically:
-      //   Buy side: cost basis = qty × pricePerUnit + fees (engine adds fees on).
-      //   Sell side: proceeds  = qty × pricePerUnit − fees (engine subtracts fees).
-      // So we pass the raw eToro open/close rate as pricePerUnit, and set fees
-      // to the opening/closing spread (which eToro reports in native currency).
-      // Overnight fees are added to closing fees (they also reduce proceeds).
+      // When editing, preserve the existing IDs and createdAt so edits
+      // update the same records. When creating, generate fresh UUIDs.
+      const buyId = editing ? editing.buy.id : uuid();
+      const sellId = editing ? editing.sell.id : uuid();
+      const createdAt = editing ? editing.buy.createdAt : new Date().toISOString();
+
       const buyTxn = {
-        id: uuid(),
+        id: buyId,
         date: openDate,
         type: 'buy',
         assetId: asset.id,
@@ -486,11 +570,13 @@ export async function renderClosedPosition(mount) {
         fees: openFee,
         taxYear: ukTaxYear(openDate),
         notes: notes || '',
-        createdAt: new Date().toISOString(),
+        createdAt,
+        updatedAt: editing ? new Date().toISOString() : undefined,
         sourceTag: 'closed-position',
+        pairId: sellId,
       };
       const sellTxn = {
-        id: uuid(),
+        id: sellId,
         date: closeDate,
         type: 'sell',
         assetId: asset.id,
@@ -503,26 +589,31 @@ export async function renderClosedPosition(mount) {
         fees: closeFee + overnightFee,
         taxYear: ukTaxYear(closeDate),
         notes: notes || '',
-        createdAt: new Date().toISOString(),
+        createdAt,
+        updatedAt: editing ? new Date().toISOString() : undefined,
         sourceTag: 'closed-position',
-        pairId: buyTxn.id,
+        pairId: buyId,
       };
-      buyTxn.pairId = sellTxn.id;
 
       await put('transactions', buyTxn);
       await put('transactions', sellTxn);
+
+      // Remember this account for the next closed-position entry
+      const currentSettings = (await get('settings', 'main')) || { id: 'main' };
+      currentSettings.lastClosedPositionAccountId = accountId;
+      await put('settings', currentSettings);
 
       // Compute final gain for toast message
       const costGbp = (qty * openPrice + openFee) * fxOpen;
       const proceedsGbp = (qty * closePrice - closeFee - overnightFee) * fxClose;
       const gainGbp = proceedsGbp - costGbp;
-      toast(`${symbol}: ${gainGbp >= 0 ? '+' : ''}£${gainGbp.toFixed(2)} recorded`);
+      toast(`${symbol}: ${gainGbp >= 0 ? '+' : ''}£${gainGbp.toFixed(2)} ${editing ? 'updated' : 'recorded'}`);
       navigate('/transactions');
     } catch (err) {
       console.error(err);
       toast(`Could not save: ${err.message}`, { error: true });
       submitBtn.disabled = false;
-      submitBtn.textContent = 'Record closed position';
+      submitBtn.textContent = editing ? 'Update closed position' : 'Record closed position';
     }
   });
 

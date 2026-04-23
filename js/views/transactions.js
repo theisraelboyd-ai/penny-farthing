@@ -176,13 +176,36 @@ function renderRow(t, assetMap, accountMap, onChange) {
             `${formatNumber(gross, 2)} ${t.currency} · ${fxLabel}`)
         : null,
     ),
-    el('td', { style: { textAlign: 'right' } },
+    el('td', { style: { textAlign: 'right', whiteSpace: 'nowrap' } },
+      el('button', {
+        class: 'button button--ghost button-sm',
+        style: { marginRight: 'var(--space-1)' },
+        onclick: () => {
+          const editUrl = t.pairId
+            ? `/closed?edit=${encodeURIComponent(t.id)}`
+            : `/add?edit=${encodeURIComponent(t.id)}`;
+          navigate(editUrl);
+        },
+      }, 'Edit'),
       el('button', {
         class: 'button button--ghost button-sm',
         onclick: async () => {
-          if (!confirm('Delete this transaction? This cannot be undone.')) return;
-          await remove('transactions', t.id);
-          toast('Transaction removed');
+          // If this is part of a pair, offer to delete both halves together
+          if (t.pairId) {
+            const choice = confirm(
+              'This transaction is part of a matched pair (buy + sell).\n\n' +
+              'OK to delete BOTH halves together (recommended).\n' +
+              'Cancel to skip and keep both.'
+            );
+            if (!choice) return;
+            await remove('transactions', t.id);
+            await remove('transactions', t.pairId);
+            toast('Pair removed');
+          } else {
+            if (!confirm('Delete this transaction? This cannot be undone.')) return;
+            await remove('transactions', t.id);
+            toast('Transaction removed');
+          }
           if (onChange) onChange();
         },
       }, 'Remove'),
