@@ -19,12 +19,24 @@
 
 .ledger-page__heading {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
   margin-bottom: var(--space-4);
   padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
+  position: relative;
+}
+/* Accent marker on section headers — subtle slate-teal bar at the start */
+.ledger-page__heading::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 18px;
+  background: var(--accent);
+  border-radius: 2px;
+  flex-shrink: 0;
+  margin-right: var(--space-1);
 }
 
 .ledger-page__heading h2 {
@@ -32,6 +44,7 @@
   font-size: var(--f-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
+  flex: 1;
 }
 
 .ledger-page__folio {
@@ -51,7 +64,41 @@
 }
 
 /* ============================================================
-   KPI stat tiles — the top-of-dashboard summary row
+   Banners — inline alerts at the top of a view
+   ============================================================ */
+.banner {
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--f-sm);
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.banner--warn {
+  background: rgba(180, 83, 9, 0.06);
+  border-color: rgba(180, 83, 9, 0.25);
+  color: var(--text);
+  border-left: 3px solid var(--warn);
+}
+[data-theme="dark"] .banner--warn {
+  background: rgba(251, 191, 36, 0.06);
+  border-color: rgba(251, 191, 36, 0.25);
+}
+.banner--warn strong {
+  color: var(--warn);
+}
+
+.pill--warn {
+  color: var(--warn);
+  background: rgba(180, 83, 9, 0.1);
+  border-color: transparent;
+}
+[data-theme="dark"] .pill--warn {
+  background: rgba(251, 191, 36, 0.12);
+}
+
+/* ============================================================
+   KPI stat tiles — sharper version with subtle accent rail
    ============================================================ */
 
 .stat-grid {
@@ -67,30 +114,44 @@
   border-radius: var(--radius-lg);
   padding: var(--space-4);
   box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+/* Subtle top-left accent rail — gives tiles a designed feel */
+.stat-tile::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+  background: linear-gradient(to bottom, var(--accent) 0%, transparent 60%);
+  opacity: 0.5;
 }
 
 .stat-tile__label {
   font-size: var(--f-xs);
   font-weight: 500;
   color: var(--text-muted);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
   margin-bottom: var(--space-2);
+  text-transform: uppercase;
 }
 
 .stat-tile__value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 1.375rem;
+  font-size: 1.5rem;
   font-weight: 600;
   color: var(--text);
-  line-height: 1.2;
-  letter-spacing: -0.02em;
+  line-height: 1.15;
+  letter-spacing: -0.025em;
 }
 
 .stat-tile__sub {
   font-size: var(--f-xs);
   color: var(--text-faint);
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
@@ -131,12 +192,14 @@
 
 .hairline-table thead th {
   font-family: var(--font-body);
-  font-weight: 500;
-  font-size: var(--f-xs);
+  font-weight: 600;
+  font-size: 0.6875rem;
   color: var(--text-muted);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border);
   text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   letter-spacing: 0.01em;
   text-transform: none;
 }

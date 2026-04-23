@@ -129,6 +129,7 @@ export async function renderHoldings(mount) {
 
   // Precompute sell-now for all holdings in parallel
   const sellNowResults = new Map();
+  let fxFailedCount = 0;
   for (const h of portfolio.holdings) {
     const p = priceMap.get(h.asset.id);
     if (!p || typeof p.priceNative !== 'number' || p.priceNative <= 0) continue;
@@ -141,8 +142,25 @@ export async function renderHoldings(mount) {
       taxYear: currentTaxYear,
     });
     sellNowResults.set(h.asset.id, result);
+    if (result.fxFailed) {
+      fxFailedCount++;
+      continue;  // Don't poison totals with nulls or bad data
+    }
     grandTotalMarket += result.marketValueGbp;
     grandTotalNetAfterTax += result.netInHandGbp;
+  }
+
+  // FX failure banner — above summary tiles so it's impossible to miss
+  if (fxFailedCount > 0) {
+    mount.append(
+      el('div', { class: 'banner banner--warn', style: { marginBottom: 'var(--space-4)' } },
+        el('strong', {}, `FX rates unavailable for ${fxFailedCount} position${fxFailedCount === 1 ? '' : 's'}. `),
+        el('span', {},
+          'The ECB reference rate for today hasn\'t published yet, or the currency isn\'t covered. '),
+        el('span', {},
+          'Click "Set price" on any affected row and enter the price directly in GBP to bypass FX conversion.'),
+      ),
+    );
   }
 
   // Summary strip
@@ -152,7 +170,9 @@ export async function renderHoldings(mount) {
         `${portfolio.holdings.length} position${portfolio.holdings.length === 1 ? '' : 's'}`),
       stat('Market value',
         priceCoverage > 0 ? formatCurrency(grandTotalMarket, 'GBP') : '—',
-        `${priceCoverage} of ${portfolio.holdings.length} priced`),
+        fxFailedCount > 0
+          ? `${priceCoverage - fxFailedCount} of ${portfolio.holdings.length} converted`
+          : `${priceCoverage} of ${portfolio.holdings.length} priced`),
       stat('Unrealised P&L',
         priceCoverage > 0 ? formatCurrency(grandTotalMarket - grandTotalCost, 'GBP') : '—',
         null,
@@ -225,7 +245,18 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
         // Market value + sell-now cells
         let marketCell;
         let sellNowCell;
-        if (sn) {
+        if (sn && sn.fxFailed) {
+          // FX fetch failed — show amber warning with actionable fix.
+          marketCell = el('td', { class: 'num' },
+            el('span', { class: 'pill pill--warn' }, 'FX unavailable'),
+            el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)', marginTop: '2px' } },
+              `${p?.currency || nativeCurrency}→GBP not fetched`),
+          );
+          sellNowCell = el('td', { class: 'num text-faint' },
+            '—',
+            el('div', { style: { fontSize: 'var(--f-xs)' } }, 'set price manually'),
+          );
+        } else if (sn) {
           marketCell = el('td', { class: 'num' },
             formatCurrency(sn.marketValueGbp, 'GBP'),
             el('div', { class: `text-faint ${sn.tone}`, style: { fontSize: 'var(--f-xs)' } },

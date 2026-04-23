@@ -54,7 +54,16 @@ function trivialRate(currency) {
  * Get the GBP-per-unit rate for a given currency on a given date.
  * Checks cache first, then Frankfurter, then returns null on failure.
  *
- * @param {string} currency  ISO 4217 (e.g. 'USD', 'EUR')
+ * If Frankfurter returns a different date (weekend/holiday fallback), we
+ * cache under BOTH the requested date and the returned date so later lookups
+ * at either get a hit.
+ *
+ * If the exact-date query returns 404 (ECB hasn't published yet — happens
+ * for "today" since ECB publishes rates with ~1-day lag), we walk BACKWARDS
+ * up to 7 days to find a published rate. This covers weekends and bank
+ * holidays as well as publication lag.
+ *
+ * @param {string} currency  ISO 4217 (e.g. 'USD', 'EUR', 'CAD')
  * @param {string} date      ISO date 'YYYY-MM-DD'
  * @returns {Promise<number|null>}
  */
@@ -66,41 +75,55 @@ export async function getFxRate(currency, date) {
   const cached = await get('fxRates', key);
   if (cached && typeof cached.rate === 'number') return cached.rate;
 
-  // Fetch from Frankfurter
-  try {
-    const url = `${FRANKFURTER_BASE}/${date}?base=${currency}&symbols=GBP`;
-    const response = await fetch(url);
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    const data = await response.json();
-    const rate = data?.rates?.GBP;
-    if (typeof rate !== 'number') {
-      throw new Error('No GBP rate in response');
-    }
+  // Walk back up to 7 days if the exact date isn't published.
+  // Frankfurter actually handles weekend fallback itself via the closest
+  // prior trading day, but DOESN'T for the current day until ~16:00 CET —
+  // so walking back by days is a robust, predictable fallback.
+  const reqDate = new Date(date + 'T00:00:00Z');
+  for (let offsetDays = 0; offsetDays <= 7; offsetDays++) {
+    const attempt = new Date(reqDate);
+    attempt.setUTCDate(attempt.getUTCDate() - offsetDays);
+    const attemptIso = attempt.toISOString().slice(0, 10);
 
-    // Cache it. We store the actual date returned by Frankfurter (which may
-    // differ from requested if the requested date was a weekend/holiday)
-    // under BOTH the requested-date key and the returned-date key, so
-    // lookups for the next trading day also hit cache.
-    const record = {
-      id: key,
-      currency,
-      date,
-      actualDate: data.date,
-      rate,
-      fetchedAt: new Date().toISOString(),
-      source: 'frankfurter',
-    };
-    await put('fxRates', record);
-    if (data.date && data.date !== date) {
-      await put('fxRates', { ...record, id: cacheKey(currency, data.date), date: data.date });
+    try {
+      const url = `${FRANKFURTER_BASE}/${attemptIso}?base=${currency}&symbols=GBP`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        // 404 = not published; keep walking back
+        if (response.status === 404) continue;
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const data = await response.json();
+      const rate = data?.rates?.GBP;
+      if (typeof rate !== 'number') {
+        continue;  // malformed response; try older date
+      }
+
+      // Cache under BOTH requested and returned dates.
+      const record = {
+        id: key,
+        currency,
+        date,
+        actualDate: data.date,
+        rate,
+        fetchedAt: new Date().toISOString(),
+        source: 'frankfurter',
+      };
+      await put('fxRates', record);
+      if (data.date && data.date !== date) {
+        await put('fxRates', { ...record, id: cacheKey(currency, data.date), date: data.date });
+      }
+      return rate;
+    } catch (err) {
+      console.warn(`[fx] Attempt ${attemptIso} for ${currency}→GBP failed:`, err.message);
+      // Try next older date
+      continue;
     }
-    return rate;
-  } catch (err) {
-    console.warn(`[fx] Failed to fetch ${currency}→GBP for ${date}:`, err.message);
-    return null;
   }
+
+  // Exhausted all attempts
+  console.warn(`[fx] Could not fetch ${currency}→GBP within 7 days of ${date}`);
+  return null;
 }
 
 /**

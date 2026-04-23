@@ -75,14 +75,42 @@ function applyReliefs(totalGain, lossesBf) {
  */
 export async function computeSellNow({ holding, marketPriceNative, priceCurrency, portfolio, yearSettings, taxYear }) {
   // ----- 1. Market value in GBP -----
-  // FX rate: use today's Frankfurter rate if non-GBP. Don't block on failure —
-  // fall back to the pool's avg FX if needed (rough but better than nothing).
   const today = new Date().toISOString().slice(0, 10);
-  let fxRate = 1;
-  if (priceCurrency === 'GBX') fxRate = 0.01;
-  else if (priceCurrency !== 'GBP') {
+  let fxRate = null;
+  let fxFailed = false;
+
+  if (priceCurrency === 'GBP') {
+    fxRate = 1;
+  } else if (priceCurrency === 'GBX') {
+    fxRate = 0.01;
+  } else {
     const fetched = await getFxRate(priceCurrency, today);
-    if (fetched !== null) fxRate = fetched;
+    if (fetched !== null) {
+      fxRate = fetched;
+    } else {
+      // FX fetch genuinely failed. Instead of silently treating as 1:1
+      // (which produced phantom 100x gains for CAD holdings), bail out
+      // with a clear error state that the UI can display.
+      fxFailed = true;
+      fxRate = null;
+    }
+  }
+
+  if (fxFailed || fxRate === null) {
+    return {
+      marketValueGbp: null,
+      grossProceedsGbp: null,
+      netProceedsGbp: null,
+      hypotheticalGainGbp: null,
+      taxDueGbp: null,
+      netInHandGbp: null,
+      tone: null,
+      sedStatus: yearSettings?.sedStatus || 'pending',
+      fxRateUsed: null,
+      fxFailed: true,
+      notes: `Could not fetch ${priceCurrency}→GBP rate. Enter it manually on the holding.`,
+      exempt: false,
+    };
   }
 
   const grossProceedsGbp = holding.quantity * marketPriceNative * fxRate;
