@@ -118,20 +118,21 @@ function renderYearCard(year, data, settings, isCurrent) {
     { class: 'pill ' + (sedStatus === 'claimed' ? 'pill--gain' : sedStatus === 'not-eligible' ? 'pill--loss' : '') },
     `SED: ${sedStatus.replace('-', ' ')}`);
 
-  // Summary stat strip — proceeds, gains, losses, net
+  // Summary stat strip — standard CGT pool only (CFDs shown separately below)
+  const standardCount = data.disposals.filter((d) => !d.isCfd).length;
   const summary = el('div', { class: 'stat-grid', style: { marginBottom: 'var(--space-4)' } },
     stat('Proceeds', formatCurrency(data.proceedsGbp, 'GBP'),
-      `${data.disposals.length} disposal${data.disposals.length === 1 ? '' : 's'}`),
+      `${standardCount} standard disposal${standardCount === 1 ? '' : 's'}`),
     stat('Gains', formatCurrency(totalGain, 'GBP'), null, totalGain > 0 ? 'gain' : null),
     stat('Losses', formatCurrency(totalLoss, 'GBP'), null, totalLoss > 0 ? 'loss' : null),
     stat('Net', formatCurrency(netGbp, 'GBP'), null,
       netGbp > 0 ? 'gain' : netGbp < 0 ? 'loss' : null),
   );
 
-  // CGT computation breakdown
+  // CGT computation breakdown — also standard pool only
   const breakdown = el('table', { class: 'hairline-table', style: { marginTop: 'var(--space-4)' } },
     el('tbody', {},
-      row('Net gain/loss for the year', netGbp, { tone: netGbp < 0 ? 'loss' : netGbp > 0 ? 'gain' : null }),
+      row('Net gain/loss for the year (standard CGT)', netGbp, { tone: netGbp < 0 ? 'loss' : netGbp > 0 ? 'gain' : null }),
       lossesBf > 0 && netGbp > 0
         ? row(`Losses brought forward used`, -losesBfUsed)
         : null,
@@ -183,10 +184,66 @@ function renderYearCard(year, data, settings, isCurrent) {
     );
   }
 
-  // Disposals list — collapsible, scroll if many
-  const disposalsList = el('section', { style: { marginTop: 'var(--space-5)' } },
+  // ----- CFD ring-fenced block -----
+  // Only render if the year has CFD disposals. CFD gains/losses are fully
+  // separate from standard CGT per TCGA 1992 s.143 — they get their own
+  // allowance headroom inclusion logic (they DO count towards the £3k AEA
+  // when combined with other CGT, but can't offset stock losses/gains in
+  // the ordering sense).
+  let cfdBlock = null;
+  if (data.cfdDisposalCount > 0) {
+    const cfdNet = data.cfdNetGbp;
+    const cfdGain = data.cfdGainGbp;
+    const cfdLoss = data.cfdLossGbp;
+
+    cfdBlock = el('div', { style: { marginTop: 'var(--space-5)' } },
+      el('h3', { style: {
+        fontSize: 'var(--f-md)',
+        marginBottom: 'var(--space-3)',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 'var(--space-2)',
+      } },
+        'CFDs — ring-fenced',
+        el('span', { class: 'pill' }, 'TCGA 1992 s.143'),
+      ),
+      el('p', { class: 'form-group__hint', style: { marginBottom: 'var(--space-3)' } },
+        'CFD gains/losses form a separate universe. CFD losses can offset CFD gains only; they cannot reduce taxable gains from stocks, ETFs, or other chargeable assets.'),
+      el('div', { class: 'stat-grid' },
+        stat(`CFD gains`, formatCurrency(cfdGain, 'GBP'),
+          `${data.cfdDisposalCount} disposal${data.cfdDisposalCount === 1 ? '' : 's'}`,
+          cfdGain > 0 ? 'gain' : null),
+        stat(`CFD losses`, formatCurrency(cfdLoss, 'GBP'), null,
+          cfdLoss > 0 ? 'loss' : null),
+        stat(`CFD net`, formatCurrency(cfdNet, 'GBP'),
+          cfdNet < 0 ? 'loss to carry (CFD pool)' : cfdNet > 0 ? 'taxable if above AEA' : null,
+          cfdNet > 0 ? 'gain' : cfdNet < 0 ? 'loss' : null),
+      ),
+    );
+  }
+
+  // Filter disposal list: standard CGT first, then CFDs
+  const standardDisposals = data.disposals.filter((d) => !d.isCfd);
+  const cfdDisposals = data.disposals.filter((d) => d.isCfd);
+
+  return el('section', { class: 'ledger-page' },
+    header,
+    el('div', { style: { marginBottom: 'var(--space-3)' } }, sedBadge),
+    summary,
+    breakdown,
+    sedScenarios,
+    // Replace the generic disposal list with a segmented one
+    renderDisposalList('Stock / ETF / crypto disposals', standardDisposals),
+    cfdBlock,
+    cfdDisposals.length > 0 ? renderDisposalList('CFD disposals', cfdDisposals) : null,
+  );
+}
+
+function renderDisposalList(title, disposals) {
+  if (disposals.length === 0) return null;
+  return el('section', { style: { marginTop: 'var(--space-5)' } },
     el('h3', { style: { fontSize: 'var(--f-md)', marginBottom: 'var(--space-3)' } },
-      `Disposals (${data.disposals.length})`),
+      `${title} (${disposals.length})`),
     el('table', { class: 'hairline-table' },
       el('thead', {},
         el('tr', {},
@@ -199,9 +256,8 @@ function renderYearCard(year, data, settings, isCurrent) {
         ),
       ),
       el('tbody', {},
-        ...data.disposals.map((d) => {
+        ...disposals.map((d) => {
           const tone = d.gainGbp >= 0 ? 'gain' : 'loss';
-          // Determine dominant rule (the rule that matched the most quantity)
           const ruleTotals = {};
           for (const m of (d.matches || [])) {
             ruleTotals[m.rule] = (ruleTotals[m.rule] || 0) + (m.quantity || 0);
@@ -212,7 +268,6 @@ function renderYearCard(year, data, settings, isCurrent) {
             '30-day': '30-day B&B',
             's104': 'S.104 pool',
           }[dominantRule] || dominantRule;
-
           return el('tr', {},
             el('td', {}, formatDate(d.date)),
             el('td', {},
@@ -229,15 +284,6 @@ function renderYearCard(year, data, settings, isCurrent) {
         }),
       ),
     ),
-  );
-
-  return el('section', { class: 'ledger-page' },
-    header,
-    el('div', { style: { marginBottom: 'var(--space-3)' } }, sedBadge),
-    summary,
-    breakdown,
-    sedScenarios,
-    disposalsList,
   );
 }
 

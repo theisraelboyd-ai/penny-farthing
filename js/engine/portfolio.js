@@ -81,6 +81,7 @@ export async function computePortfolio(options = {}) {
         accountName: account.name,
         wrapper: account.wrapper,
         taxYear: ukTaxYear(d.date),
+        isCfd: !!asset.meta?.cfd,
       });
     }
 
@@ -104,7 +105,9 @@ export async function computePortfolio(options = {}) {
   // Sort disposals newest first for the realised log
   allDisposals.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
 
-  // Aggregate by tax year
+  // Aggregate by tax year, splitting standard CGT from ring-fenced CFD.
+  // Per TCGA 1992 s.143, CFD gains/losses cannot pool with spot stock
+  // CGT gains/losses — they're their own universe.
   const byTaxYear = {};
   for (const d of allDisposals) {
     // Only aggregate CGT-relevant disposals. ISA/SIPP don't count.
@@ -114,18 +117,33 @@ export async function computePortfolio(options = {}) {
       byTaxYear[d.taxYear] = {
         year: d.taxYear,
         disposals: [],
+        // Standard CGT bucket (stocks, ETFs, crypto, chattels)
         totalGainGbp: 0,
         totalLossGbp: 0,
         netGbp: 0,
         proceedsGbp: 0,
+        // Ring-fenced CFD bucket
+        cfdGainGbp: 0,
+        cfdLossGbp: 0,
+        cfdNetGbp: 0,
+        cfdProceedsGbp: 0,
+        cfdDisposalCount: 0,
       };
     }
     const y = byTaxYear[d.taxYear];
     y.disposals.push(d);
-    if (d.gainGbp >= 0) y.totalGainGbp += d.gainGbp;
-    else y.totalLossGbp += Math.abs(d.gainGbp);
-    y.netGbp += d.gainGbp;
-    y.proceedsGbp += d.proceedsNetGbp;
+    if (d.isCfd) {
+      if (d.gainGbp >= 0) y.cfdGainGbp += d.gainGbp;
+      else y.cfdLossGbp += Math.abs(d.gainGbp);
+      y.cfdNetGbp += d.gainGbp;
+      y.cfdProceedsGbp += d.proceedsNetGbp;
+      y.cfdDisposalCount++;
+    } else {
+      if (d.gainGbp >= 0) y.totalGainGbp += d.gainGbp;
+      else y.totalLossGbp += Math.abs(d.gainGbp);
+      y.netGbp += d.gainGbp;
+      y.proceedsGbp += d.proceedsNetGbp;
+    }
   }
 
   return {

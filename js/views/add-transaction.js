@@ -41,10 +41,26 @@ export async function renderAddTransaction(mount) {
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
       el('h2', {}, 'Record a transaction'),
-      el('span', { class: 'ledger-page__folio' }, 'New entry'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
       'Enter a buy, sell, dividend, or fee. The tax year is set automatically from the date.'),
+    el('div', {
+      style: {
+        padding: 'var(--space-3)',
+        background: 'var(--surface-2)',
+        borderRadius: 'var(--radius-md)',
+        marginBottom: 'var(--space-4)',
+        fontSize: 'var(--f-sm)',
+      },
+    },
+      el('strong', {}, 'Recording an already-closed trade? '),
+      'Use ',
+      el('a', {
+        href: '#/closed',
+        style: { color: 'var(--accent)', fontWeight: '500' },
+      }, 'Record closed position'),
+      ' instead — enter open + close in one go, designed for eToro / Trading 212 history.',
+    ),
   );
 
   // --- Transaction type selector ---

@@ -3,7 +3,7 @@
  * On fetch, try cache first for shell files, network first for API calls.
  */
 
-const CACHE_NAME = 'penny-farthing-v11';
+const CACHE_NAME = 'penny-farthing-v12';
 const SHELL = [
   './',
   './index.html',
@@ -25,7 +25,9 @@ const SHELL = [
   './js/views/holdings.js',
   './js/views/transactions.js',
   './js/views/add-transaction.js',
+  './js/views/closed-position.js',
   './js/views/import.js',
+  './js/views/tax.js',
   './js/views/settings.js',
   './js/engine/pool.js',
   './js/engine/portfolio.js',

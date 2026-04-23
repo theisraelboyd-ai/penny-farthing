@@ -19,6 +19,23 @@ export async function renderImport(mount) {
       el('h2', {}, 'Import trades'),
       el('p', {}, 'Load an IBKR Activity Statement CSV. Review every row before committing.'),
     ),
+    el('div', {
+      style: {
+        padding: 'var(--space-3)',
+        background: 'var(--surface-2)',
+        borderRadius: 'var(--radius-md)',
+        marginBottom: 'var(--space-4)',
+        fontSize: 'var(--f-sm)',
+      },
+    },
+      el('strong', {}, 'For eToro / Trading 212 history: '),
+      'use ',
+      el('a', {
+        href: '#/closed',
+        style: { color: 'var(--accent)', fontWeight: '500' },
+      }, 'Record closed position'),
+      ' — enter open and close in one form per disposal. Faster than building an importer for platforms that already match your trades.',
+    ),
   );
 
   // ----- Prerequisite: at least one IBKR account -----
