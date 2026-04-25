@@ -82,11 +82,17 @@ export async function computePortfolio(options = {}) {
         wrapper: account.wrapper,
         taxYear: ukTaxYear(d.date),
         isCfd: !!asset.meta?.cfd,
+        // Forex pseudo-assets (e.g. "GBP.USD", "GBP.CAD") arise from broker
+        // auto-conversions which are not investment events. They should not
+        // appear in CGT calculations. Match the IBKR pattern of CCY.CCY tickers.
+        isForex: isForexPseudoAsset(asset),
       });
     }
 
-    // Only list as a "holding" if the pool has quantity remaining
-    if (result.currentPool.quantity > 1e-9) {
+    // Only list as a "holding" if the pool has quantity remaining AND
+    // it's not a forex pseudo-asset (broker auto-conversions don't represent
+    // investment positions even if quantity remains).
+    if (result.currentPool.quantity > 1e-9 && !isForexPseudoAsset(asset)) {
       holdings.push({
         assetId,
         accountId,
@@ -112,6 +118,10 @@ export async function computePortfolio(options = {}) {
   for (const d of allDisposals) {
     // Only aggregate CGT-relevant disposals. ISA/SIPP don't count.
     if (d.wrapper === 'ISA' || d.wrapper === 'SIPP') continue;
+    // Forex pseudo-disposals (broker auto-conversions) are not investment
+    // events and are not CGT-chargeable. Defence in depth: even if they
+    // leak past the importer's filter, they don't pollute tax figures here.
+    if (d.isForex) continue;
 
     if (!byTaxYear[d.taxYear]) {
       byTaxYear[d.taxYear] = {
@@ -197,4 +207,21 @@ export async function computePortfolio(options = {}) {
     assetMap,
     accountMap,
   };
+}
+
+/**
+ * Detect whether an asset is a broker-auto-converted forex pseudo-position
+ * rather than a real investment. These show up in IBKR data as "GBP.USD"
+ * style tickers — not actual disposals from the user's perspective.
+ *
+ * Returns true if the ticker matches the pattern of two 3-letter ISO
+ * currency codes joined by a dot, OR if the asset's metadata flags it
+ * as forex. Conservative: false positives here would suppress real
+ * disposals, so we only match the strict CCY.CCY pattern.
+ */
+export function isForexPseudoAsset(asset) {
+  if (!asset) return false;
+  if (asset.meta?.forex === true) return true;
+  const ticker = (asset.ticker || '').toUpperCase().trim();
+  return /^[A-Z]{3}\.[A-Z]{3}$/.test(ticker);
 }

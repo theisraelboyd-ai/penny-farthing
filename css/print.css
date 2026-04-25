@@ -288,12 +288,12 @@
 @media print {
   /* Reset the whole page to pure white, black ink. Hide everything
      outside the print-doc. */
-  body, .app, .app-main, .masthead, .bottom-nav, .view-header,
-  .toast-stack, .nav-dock {
+  body, .app, .app-main, .masthead, .dock, .view-header,
+  .toast-stack, .toast {
     background: white !important;
   }
-  .masthead, .bottom-nav, .view-header:not(.print-doc .view-header),
-  .no-print, .toast-stack, .nav-dock {
+  .masthead, .dock, .view-header:not(.print-doc .view-header),
+  .no-print, .toast-stack, .toast {
     display: none !important;
   }
 

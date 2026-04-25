@@ -400,6 +400,33 @@ function renderDeveloperSection() {
     }
   });
 
+  const clearForexBtn = el('button', { class: 'button button--ghost' }, 'Remove phantom forex entries');
+  clearForexBtn.addEventListener('click', async () => {
+    try {
+      const result = await scanPhantomForex();
+      if (result.assets.length === 0) {
+        toast('No phantom forex entries found — your data is clean.');
+        return;
+      }
+      const summary = result.assets
+        .map((a) => `  · ${a.ticker} (${result.txnsByAsset[a.id]} transactions)`)
+        .join('\n');
+      const ok = confirm(
+        `Found ${result.assets.length} phantom forex assets and ${result.totalTxns} associated transactions:\n\n` +
+        summary +
+        `\n\nThese are broker auto-conversions (e.g. GBP↔USD when buying foreign stocks) that were imported as if they were trades. They should not be in CGT calculations.\n\n` +
+        `Remove them?`
+      );
+      if (!ok) return;
+      const removed = await removePhantomForex(result);
+      toast(`Removed ${removed.assets} forex assets and ${removed.transactions} transactions`);
+      setTimeout(() => location.reload(), 1000);
+    } catch (err) {
+      console.error(err);
+      toast(`Failed: ${err.message}`, { error: true });
+    }
+  });
+
   const clearSampleBtn = el('button', { class: 'button button--ghost' }, 'Clear sample data only');
   clearSampleBtn.addEventListener('click', async () => {
     if (!confirm('Remove all accounts, assets, and transactions marked as "(sample)"?\n\nYour real data will be preserved.')) return;
@@ -426,11 +453,54 @@ function renderDeveloperSection() {
   });
 
   page.append(
-    el('div', { class: 'button-row' }, importBtn, loadBtn, clearSampleBtn, clearBtn),
+    el('div', { class: 'button-row' }, importBtn, loadBtn, clearForexBtn, clearSampleBtn, clearBtn),
     el('p', { class: 'form-group__hint', style: { marginTop: 'var(--space-4)' } },
-      'Import supports IBKR Activity Statement CSVs. Duplicates are auto-detected and pre-deselected.'),
+      'Import supports IBKR Activity Statement CSVs. Duplicates are auto-detected and pre-deselected. The "Remove phantom forex" tool cleans up broker auto-conversion entries that were imported as if they were trades.'),
   );
   return page;
+}
+
+async function scanPhantomForex() {
+  const { getAll } = await import('../storage/indexeddb.js');
+  const [assets, transactions] = await Promise.all([
+    getAll('assets'),
+    getAll('transactions'),
+  ]);
+  // Pseudo-asset detection: ticker matches CCY.CCY pattern (3 letters dot 3 letters,
+  // both uppercase ASCII).
+  const forexAssets = assets.filter((a) =>
+    /^[A-Z]{3}\.[A-Z]{3}$/.test((a.ticker || '').toUpperCase().trim())
+  );
+  const forexAssetIds = new Set(forexAssets.map((a) => a.id));
+  const txnsByAsset = {};
+  let totalTxns = 0;
+  for (const t of transactions) {
+    if (forexAssetIds.has(t.assetId)) {
+      txnsByAsset[t.assetId] = (txnsByAsset[t.assetId] || 0) + 1;
+      totalTxns++;
+    }
+  }
+  return { assets: forexAssets, txnsByAsset, totalTxns };
+}
+
+async function removePhantomForex(scan) {
+  const { getAll, remove } = await import('../storage/indexeddb.js');
+  const transactions = await getAll('transactions');
+  const forexAssetIds = new Set(scan.assets.map((a) => a.id));
+
+  let removedTxns = 0;
+  for (const t of transactions) {
+    if (forexAssetIds.has(t.assetId)) {
+      await remove('transactions', t.id);
+      removedTxns++;
+    }
+  }
+  let removedAssets = 0;
+  for (const a of scan.assets) {
+    await remove('assets', a.id);
+    removedAssets++;
+  }
+  return { assets: removedAssets, transactions: removedTxns };
 }
 
 async function clearSampleData() {
