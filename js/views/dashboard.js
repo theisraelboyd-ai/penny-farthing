@@ -84,6 +84,41 @@ export async function renderDashboard(mount) {
     ),
   );
 
+  // If we have a closed year with reportable activity, offer a direct
+  // action to generate the SA108 summary — visible on Dashboard so it's
+  // impossible to miss when Self Assessment season comes around.
+  if (recentClosedData && recentClosedData.disposals.length > 0) {
+    mount.append(
+      el('div', {
+        style: {
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: 'var(--space-3) var(--space-4)',
+          background: 'var(--accent-wash)',
+          border: '1px solid var(--accent-ring)',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: 'var(--space-4)',
+          fontSize: 'var(--f-sm)',
+          gap: 'var(--space-3)',
+          flexWrap: 'wrap',
+        },
+      },
+        el('div', {},
+          el('strong', {}, `Self Assessment ${recentClosedYear}`),
+          el('span', { class: 'text-muted' },
+            ` — ${recentClosedData.disposals.length} disposals, net ${formatCurrency(recentClosedData.netGbp, 'GBP')}. Deadline 31 January ${parseInt(recentClosedYear.split('-')[0], 10) + 2}.`),
+        ),
+        el('button', {
+          class: 'button button-sm',
+          onclick: () => {
+            location.hash = `#/print?year=${encodeURIComponent(recentClosedYear)}`;
+          },
+        }, 'Print summary →'),
+      ),
+    );
+  }
+
   // Holdings preview — top 5 positions
   if (portfolio.holdings.length > 0) {
     const topHoldings = portfolio.holdings.slice(0, 5);
@@ -166,8 +201,9 @@ export async function renderDashboard(mount) {
 }
 
 function statTile(label, value, sub, tone) {
-  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : '';
-  return el('div', { class: 'stat-tile' },
+  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : tone === 'warn' ? 'warn' : '';
+  const tileClass = tone ? `stat-tile stat-tile--${tone}` : 'stat-tile';
+  return el('div', { class: tileClass },
     el('div', { class: 'stat-tile__label' }, label),
     el('div', { class: `stat-tile__value ${valueClass}` }, value),
     sub ? el('div', { class: 'stat-tile__sub' }, sub) : null,

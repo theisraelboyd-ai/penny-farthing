@@ -108,32 +108,62 @@
   margin-bottom: var(--space-4);
 }
 
+/* ============================================================
+   Stat tiles — refined: floating card with accent underline
+   and polarity-aware colour via modifier classes.
+   ============================================================ */
 .stat-tile {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: var(--space-4);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.04),
+    0 4px 8px rgba(0, 0, 0, 0.03);
   position: relative;
   overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
-/* Subtle top-left accent rail — gives tiles a designed feel */
-.stat-tile::before {
+.stat-tile:hover {
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 8px 16px rgba(0, 0, 0, 0.04);
+}
+[data-theme="dark"] .stat-tile {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 4px 8px rgba(0, 0, 0, 0.2);
+}
+[data-theme="dark"] .stat-tile:hover {
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    0 8px 16px rgba(0, 0, 0, 0.25);
+}
+
+/* Accent underline — a thin band at the bottom edge that picks up on
+   the value's polarity. Default slate-teal, green for gains, red for losses,
+   amber for tax. */
+.stat-tile::after {
   content: '';
   position: absolute;
-  top: 0;
   left: 0;
-  width: 3px;
-  height: 100%;
-  background: linear-gradient(to bottom, var(--accent) 0%, transparent 60%);
-  opacity: 0.5;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent);
+  opacity: 0.6;
 }
+.stat-tile--gain::after { background: var(--gain); opacity: 0.85; }
+.stat-tile--loss::after { background: var(--loss); opacity: 0.85; }
+.stat-tile--warn::after { background: var(--warn); opacity: 0.85; }
+.stat-tile--neutral::after { background: var(--border-strong); opacity: 0.5; }
 
 .stat-tile__label {
   font-size: var(--f-xs);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--text-muted);
-  letter-spacing: 0.02em;
+  letter-spacing: 0.05em;
   margin-bottom: var(--space-2);
   text-transform: uppercase;
 }
@@ -141,12 +171,15 @@
 .stat-tile__value {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
-  font-size: 1.5rem;
+  font-size: 1.625rem;
   font-weight: 600;
   color: var(--text);
-  line-height: 1.15;
+  line-height: 1.1;
   letter-spacing: -0.025em;
 }
+.stat-tile__value.gain { color: var(--gain); }
+.stat-tile__value.loss { color: var(--loss); }
+.stat-tile__value.warn { color: var(--warn); }
 
 .stat-tile__sub {
   font-size: var(--f-xs);
@@ -154,6 +187,7 @@
   margin-top: var(--space-2);
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  line-height: 1.35;
 }
 
 /* Generic stat-row (used in tax view etc.) */
@@ -181,13 +215,14 @@
 .stat-row__value--large { font-size: 1.125rem; font-weight: 600; }
 
 /* ============================================================
-   Tables
+   Tables — zebra striping, tabular figures, scroll-fade wrapper
    ============================================================ */
 
 .hairline-table {
   width: 100%;
   border-collapse: collapse;
   font-size: var(--f-sm);
+  font-variant-numeric: tabular-nums;
 }
 
 .hairline-table thead th {
@@ -195,13 +230,14 @@
   font-weight: 600;
   font-size: 0.6875rem;
   color: var(--text-muted);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--border);
+  padding: var(--space-3);
+  border-bottom: 1.5px solid var(--border-strong);
   text-align: left;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  letter-spacing: 0.01em;
-  text-transform: none;
+  letter-spacing: 0.06em;
+  background: var(--surface);
+  position: sticky;
+  top: 0;
 }
 
 .hairline-table tbody td {
@@ -211,19 +247,64 @@
   color: var(--text);
 }
 
-.hairline-table tbody tr:hover { background: var(--surface-hover); }
+/* Subtle zebra striping — helps eye track horizontal across wide tables */
+.hairline-table tbody tr:nth-child(even) {
+  background: var(--surface-2);
+}
+[data-theme="dark"] .hairline-table tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+.hairline-table tbody tr:hover {
+  background: var(--surface-hover);
+}
+[data-theme="dark"] .hairline-table tbody tr:hover {
+  background: rgba(45, 212, 191, 0.04);
+}
+
 .hairline-table tbody tr:last-child td { border-bottom: 0; }
 
 .hairline-table .num {
   text-align: right;
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
+  font-feature-settings: "tnum";
 }
+
+/* Financial polarity — consistent across the app */
+.hairline-table .num.gain { color: var(--gain); font-weight: 500; }
+.hairline-table .num.loss { color: var(--loss); font-weight: 500; }
+.hairline-table .num.warn { color: var(--warn); font-weight: 500; }
 
 .hairline-table tfoot td {
   padding: var(--space-3);
-  border-top: 1px solid var(--border-strong);
+  border-top: 1.5px solid var(--border-strong);
   font-weight: 600;
+  background: var(--surface-2);
+}
+
+/* Horizontal-scroll wrapper with a subtle gradient fade on the right edge
+   so users on mobile know there's more table to the right. Wrap tables
+   in <div class="table-scroll"> to enable. */
+.table-scroll {
+  position: relative;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.table-scroll::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 100%;
+  background: linear-gradient(to right, transparent, var(--surface));
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+.table-scroll.is-scrollable::after {
+  opacity: 1;
 }
 
 .table-empty {
@@ -582,17 +663,36 @@
 }
 .motif-divider::before, .motif-divider::after { content: none; }
 
-/* View header */
+/* View header — accent underline + slightly more interest */
 .view-header {
   margin-bottom: var(--space-5);
+  padding-bottom: var(--space-4);
+  position: relative;
+}
+.view-header::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 40px;
+  height: 2px;
+  background: linear-gradient(to right, var(--accent), transparent);
+  border-radius: 1px;
 }
 .view-header h2 {
-  font-size: var(--f-xl);
-  margin-bottom: var(--space-1);
-  font-weight: 600;
-  letter-spacing: -0.015em;
+  font-size: 1.75rem;
+  margin-bottom: var(--space-2);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.15;
 }
-.view-header p { color: var(--text-muted); font-size: var(--f-sm); font-style: normal; }
+.view-header p {
+  color: var(--text-muted);
+  font-size: var(--f-sm);
+  font-style: normal;
+  max-width: 65ch;
+  line-height: 1.5;
+}
 
 /* Empty state block */
 .empty-state {

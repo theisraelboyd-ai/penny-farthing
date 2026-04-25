@@ -395,8 +395,9 @@ Enter price per unit (native currency):`;
 }
 
 function stat(label, value, sub, tone) {
-  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : '';
-  return el('div', { class: 'stat-tile' },
+  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : tone === 'warn' ? 'warn' : '';
+  const tileClass = tone ? `stat-tile stat-tile--${tone}` : 'stat-tile';
+  return el('div', { class: tileClass },
     el('div', { class: 'stat-tile__label' }, label),
     el('div', { class: `stat-tile__value ${valueClass}` }, value),
     sub ? el('div', { class: 'stat-tile__sub' }, sub) : null,

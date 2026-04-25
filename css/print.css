@@ -1,0 +1,413 @@
+/* Penny Farthing — Print view stylesheet.
+ *
+ * Two-mode: on-screen (readable web page) and print (A4 document).
+ * Print media query transforms the layout for paper output.
+ */
+
+/* ============================================================
+   On-screen styling for the print doc
+   ============================================================ */
+
+.print-doc {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  background: var(--surface);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.print-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-5);
+}
+.print-actions .button {
+  align-self: flex-start;
+}
+.print-actions .button + .button {
+  margin-top: var(--space-2);
+}
+
+/* Document header */
+.print-header {
+  padding-bottom: var(--space-5);
+  margin-bottom: var(--space-5);
+  border-bottom: 2px solid var(--accent);
+}
+.print-header__meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: var(--space-3);
+  font-size: var(--f-sm);
+  color: var(--text-muted);
+}
+.print-header__brand {
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: -0.01em;
+}
+.print-header__subtitle {
+  font-style: italic;
+  font-size: var(--f-xs);
+}
+.print-header h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0 0 var(--space-2);
+  line-height: 1.1;
+}
+.print-header__dates {
+  font-size: var(--f-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+.print-header__generated {
+  font-size: var(--f-xs);
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+}
+
+/* Sections */
+.print-section {
+  margin-bottom: var(--space-6);
+  break-inside: avoid;
+}
+.print-section h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+  letter-spacing: -0.01em;
+}
+.print-section__subtitle {
+  font-size: var(--f-sm);
+  color: var(--text-muted);
+  margin-bottom: var(--space-4);
+  font-style: italic;
+}
+.print-subsection {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent);
+}
+.print-subsection h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+/* Summary tables (key-value) */
+.print-summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--f-md);
+}
+.print-summary-table td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.print-summary-table td:first-child {
+  color: var(--text);
+}
+.print-summary-table td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.print-summary-table tr.is-total td {
+  font-weight: 600;
+  background: var(--accent-wash);
+  border-bottom: 2px solid var(--accent);
+}
+.print-summary-table tr:last-child td {
+  border-bottom: 0;
+}
+
+/* Scenario table (SED succeeds/fails) */
+.print-scenario-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--f-sm);
+  margin-top: var(--space-3);
+}
+.print-scenario-table thead th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1.5px solid var(--border-strong);
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--f-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+.print-scenario-table thead th.num { text-align: right; }
+.print-scenario-table tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.print-scenario-table tbody td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.print-scenario-table tr.is-effective {
+  background: var(--accent-wash);
+}
+.print-scenario-table tr.is-effective td:first-child::before {
+  content: '▶ ';
+  color: var(--accent);
+  font-weight: 700;
+}
+
+/* Disposal schedule tables */
+.print-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--f-sm);
+  font-variant-numeric: tabular-nums;
+}
+.print-table thead th {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1.5px solid var(--border-strong);
+  text-align: left;
+  font-weight: 600;
+  font-size: var(--f-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-2);
+}
+.print-table thead th.num { text-align: right; }
+.print-table tbody td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.print-table tbody td.num {
+  text-align: right;
+  font-family: var(--font-mono);
+}
+.print-table tbody tr:nth-child(even) {
+  background: var(--surface-2);
+}
+.print-cell-sub {
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+/* Methodology section */
+.print-methodology__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+.print-method-block h4 {
+  font-size: var(--f-sm);
+  font-weight: 700;
+  color: var(--accent);
+  margin: 0 0 var(--space-1);
+  letter-spacing: 0.01em;
+}
+.print-method-block p {
+  font-size: 0.8125rem;
+  color: var(--text);
+  line-height: 1.55;
+  margin: 0;
+}
+.print-disclaimer {
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  font-size: var(--f-sm);
+  font-style: italic;
+  color: var(--text-muted);
+  margin-top: var(--space-4);
+}
+
+/* Footer */
+.print-footer {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border);
+  font-size: 0.7rem;
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  line-height: 1.6;
+}
+.print-footer div { margin-bottom: 2px; }
+
+/* Polarity colours consistent with rest of app */
+.print-summary-table .num.gain,
+.print-table .num.gain,
+.print-scenario-table .num.gain {
+  color: var(--gain);
+  font-weight: 500;
+}
+.print-summary-table .num.loss,
+.print-table .num.loss,
+.print-scenario-table .num.loss {
+  color: var(--loss);
+  font-weight: 500;
+}
+.print-summary-table .num.warn,
+.print-table .num.warn,
+.print-scenario-table .num.warn {
+  color: var(--warn);
+  font-weight: 500;
+}
+
+/* Responsive: single-column methodology on narrow screens */
+@media (max-width: 640px) {
+  .print-methodology__grid {
+    grid-template-columns: 1fr;
+  }
+  .print-header__meta {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+}
+
+/* ============================================================
+   PRINT MEDIA — transforms on-screen into A4 paper document
+   ============================================================ */
+
+@media print {
+  /* Reset the whole page to pure white, black ink. Hide everything
+     outside the print-doc. */
+  body, .app, .app-main, .masthead, .bottom-nav, .view-header,
+  .toast-stack, .nav-dock {
+    background: white !important;
+  }
+  .masthead, .bottom-nav, .view-header:not(.print-doc .view-header),
+  .no-print, .toast-stack, .nav-dock {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    font-size: 10pt;
+  }
+
+  @page {
+    size: A4;
+    margin: 18mm 15mm;
+  }
+
+  .print-doc {
+    max-width: 100%;
+    padding: 0;
+    background: white;
+    color: black;
+  }
+
+  .print-header {
+    border-bottom: 1.5pt solid #0f766e;
+    padding-bottom: 14pt;
+    margin-bottom: 18pt;
+  }
+  .print-header__brand { color: #0f766e !important; }
+  .print-header h1 { font-size: 22pt; }
+
+  .print-section {
+    page-break-inside: avoid;
+    break-inside: avoid-page;
+  }
+  .print-section h2 {
+    font-size: 14pt;
+    border-bottom: 0.5pt solid #000;
+    page-break-after: avoid;
+    break-after: avoid-page;
+  }
+  .print-section__subtitle {
+    font-size: 9pt;
+    color: #555 !important;
+  }
+
+  .print-subsection {
+    background: #f5f5f5 !important;
+    border-left: 2pt solid #0f766e !important;
+    page-break-inside: avoid;
+  }
+
+  .print-summary-table, .print-table, .print-scenario-table {
+    font-size: 9.5pt;
+    color: black !important;
+  }
+  .print-summary-table td, .print-table td, .print-scenario-table td {
+    border-bottom: 0.25pt solid #ccc !important;
+  }
+  .print-summary-table tr.is-total td {
+    background: #e6f2f1 !important;
+    border-bottom: 1pt solid #0f766e !important;
+    font-weight: 700;
+  }
+  .print-table thead th, .print-scenario-table thead th {
+    background: #f0f0f0 !important;
+    border-bottom: 1pt solid #333 !important;
+    color: #333 !important;
+  }
+  .print-table tbody tr:nth-child(even) {
+    background: #fafafa !important;
+  }
+  .print-scenario-table tr.is-effective {
+    background: #e6f2f1 !important;
+  }
+
+  /* Polarity: keep the colour meaning on paper because it aids comprehension.
+     Modern colour printers handle this fine; B&W printers render gracefully. */
+  .num.gain { color: #15803d !important; font-weight: 500 !important; }
+  .num.loss { color: #b91c1c !important; font-weight: 500 !important; }
+  .num.warn { color: #b45309 !important; font-weight: 500 !important; }
+
+  .print-methodology__grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 10pt !important;
+  }
+  .print-method-block h4 {
+    color: #0f766e !important;
+    font-size: 9pt;
+  }
+  .print-method-block p {
+    font-size: 8.5pt;
+    color: #222 !important;
+  }
+
+  .print-disclaimer {
+    background: #fffbf0 !important;
+    border-left: 2pt solid #b45309 !important;
+    font-size: 9pt;
+    color: #444 !important;
+    page-break-inside: avoid;
+  }
+
+  .print-footer {
+    border-top: 0.5pt solid #ccc !important;
+    color: #666 !important;
+    font-size: 7.5pt;
+  }
+
+  .print-cell-sub {
+    color: #666 !important;
+    font-size: 7.5pt;
+  }
+
+  /* Ensure table breaks are clean */
+  table { page-break-inside: auto; }
+  tr { page-break-inside: avoid; break-inside: avoid-page; }
+  thead { display: table-header-group; }
+}

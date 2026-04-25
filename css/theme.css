@@ -163,6 +163,24 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   border-bottom: 1px solid var(--border);
 }
 
+/* Thin gradient accent strip at the very top — gives the header a tiny bit
+   of personality without shouting. Slate-teal → transparent. */
+.masthead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--accent) 0%,
+    var(--accent-soft) 35%,
+    transparent 70%
+  );
+  opacity: 0.8;
+}
+
 .masthead__inner {
   position: relative;
   max-width: 1200px;
@@ -180,8 +198,8 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   background: var(--accent);
   color: #ffffff;
   border-radius: var(--radius-sm);
@@ -189,13 +207,22 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   font-weight: 700;
   font-size: 0.8125rem;
   letter-spacing: -0.02em;
+  box-shadow:
+    0 1px 2px rgba(15, 118, 110, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  position: relative;
+}
+[data-theme="dark"] .masthead__ornament {
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
 }
 .masthead__ornament::before { content: "PF"; }
 .masthead__ornament > * { display: none; }
 
 .masthead__title h1 {
   font-family: var(--font-display);
-  font-size: 1.0625rem;
+  font-size: 1.125rem;
   font-weight: 600;
   margin: 0;
   letter-spacing: -0.015em;

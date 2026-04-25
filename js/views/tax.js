@@ -130,8 +130,18 @@ function renderYearCard(year, data, settings, isCurrent, opts = {}) {
 
   const header = el('div', { class: 'ledger-page__heading' },
     el('h2', {}, `Tax year ${year}`),
-    el('span', { class: 'pill' + (isCurrent ? ' pill--accent' : '') },
-      isCurrent ? 'Current' : 'Closed'),
+    el('div', { style: { display: 'flex', gap: 'var(--space-2)', alignItems: 'center' } },
+      el('span', { class: 'pill' + (isCurrent ? ' pill--accent' : '') },
+        isCurrent ? 'Current' : 'Closed'),
+      el('button', {
+        class: 'button button--ghost button-sm',
+        onclick: () => {
+          // Route target — the actual report view is built in the next phase
+          location.hash = `#/print?year=${encodeURIComponent(year)}`;
+        },
+        title: `Generate printable SA108 summary for ${year}`,
+      }, 'Print summary →'),
+    ),
   );
 
   const sedBadge = el('span',
@@ -323,8 +333,9 @@ function computeCgt(taxableGain, nonSedIncome) {
 }
 
 function stat(label, value, sub, tone) {
-  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : '';
-  return el('div', { class: 'stat-tile' },
+  const valueClass = tone === 'gain' ? 'gain' : tone === 'loss' ? 'loss' : tone === 'warn' ? 'warn' : '';
+  const tileClass = tone ? `stat-tile stat-tile--${tone}` : 'stat-tile';
+  return el('div', { class: tileClass },
     el('div', { class: 'stat-tile__label' }, label),
     el('div', { class: `stat-tile__value ${valueClass}` }, value),
     sub ? el('div', { class: 'stat-tile__sub' }, sub) : null,

@@ -12,7 +12,12 @@ import { renderClosedPosition } from './views/closed-position.js';
 import { renderSettings } from './views/settings.js';
 import { renderTax } from './views/tax.js';
 import { renderImport } from './views/import.js';
+import { renderPrint } from './views/print.js';
 import { get, put } from './storage/indexeddb.js';
+
+/* ============================================================
+   Routes
+   ============================================================ */
 
 /* ============================================================
    Theme
@@ -62,6 +67,7 @@ registerRoute('/add',           renderAddTransaction);
 registerRoute('/closed',        renderClosedPosition);
 registerRoute('/import',        renderImport);
 registerRoute('/tax',           renderTax);
+registerRoute('/print',         renderPrint);
 registerRoute('/settings',      renderSettings);
 
 initTheme();
