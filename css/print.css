@@ -227,16 +227,6 @@
   line-height: 1.55;
   margin: 0;
 }
-.print-disclaimer {
-  padding: var(--space-3) var(--space-4);
-  background: var(--surface-2);
-  border-left: 3px solid var(--warn);
-  border-radius: var(--radius-sm);
-  font-size: var(--f-sm);
-  font-style: italic;
-  color: var(--text-muted);
-  margin-top: var(--space-4);
-}
 
 /* Footer */
 .print-footer {
@@ -385,14 +375,6 @@
   .print-method-block p {
     font-size: 8.5pt;
     color: #222 !important;
-  }
-
-  .print-disclaimer {
-    background: #fffbf0 !important;
-    border-left: 2pt solid #b45309 !important;
-    font-size: 9pt;
-    color: #444 !important;
-    page-break-inside: avoid;
   }
 
   .print-footer {

@@ -30,6 +30,7 @@
   --loss:         #b91c1c;
   --loss-soft:    #fee2e2;
   --warn:         #b45309;
+  --warn-soft:    #fef3c7;
 
   /* Typography */
   --font-display: 'Inter Tight', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -84,6 +85,7 @@
   --loss:         #f87171;
   --loss-soft:    rgba(248, 113, 113, 0.12);
   --warn:         #fbbf24;
+  --warn-soft:    rgba(251, 191, 36, 0.12);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 1px 3px rgba(0, 0, 0, 0.4), 0 1px 2px rgba(0, 0, 0, 0.3);
@@ -357,3 +359,59 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .toast.is-showing { opacity: 1; transform: translate(-50%, 0); }
 .toast.is-error { background: var(--loss); color: #fff; }
+
+/* ============================================================
+   Privacy mode — dashboard stat tiles only.
+   When [data-privacy="on"] is set on <html>, blur the figure
+   inside Dashboard stat tiles. Hover removes the blur entirely
+   (no partial reveal) so users can quickly check a value.
+   ============================================================ */
+
+[data-privacy="on"] .stat-tile__value,
+[data-privacy="on"] .stat-tile__sub {
+  filter: blur(7px);
+  transition: filter 0.15s ease;
+  user-select: none;
+}
+[data-privacy="on"] .stat-tile:hover .stat-tile__value,
+[data-privacy="on"] .stat-tile:hover .stat-tile__sub,
+[data-privacy="on"] .stat-tile__value:hover,
+[data-privacy="on"] .stat-tile__sub:hover {
+  filter: none;
+  user-select: auto;
+}
+
+/* ============================================================
+   Masthead actions group + icon button
+   ============================================================ */
+
+.masthead__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.masthead-icon-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-sm);
+  font-size: 1rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.masthead-icon-btn:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.masthead-icon-btn[aria-pressed="true"] {
+  background: var(--accent-wash);
+  color: var(--accent);
+  border-color: var(--accent);
+}

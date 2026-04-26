@@ -32,7 +32,7 @@ export async function renderSettings(mount) {
     await renderSedSection(currentYear, priorYear),
     renderConnectionsSection(settings),
     await renderAccountsSection(),
-    renderBackupSection(),
+    await renderBackupSection(),
     renderDeveloperSection(),
     renderAboutSection(),
   );
@@ -323,19 +323,41 @@ async function renderAccountsSection() {
   return page;
 }
 
-function renderBackupSection() {
+async function renderBackupSection() {
+  const settings = await get('settings', 'main');
+  const lastBackedUpAt = settings?.lastBackedUpAt || null;
+
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
       el('h2', {}, 'Backup & restore'),
       el('span', { class: 'ledger-page__folio' }, 'JSON'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
-      'Export the entire ledger as a single JSON file. Keep a copy anywhere you like.'),
+      'Export the entire ledger as a single JSON file. Keep a copy anywhere you like — email, OneDrive, WhatsApp to yourself.'),
   );
+
+  // Show last-backed-up status — informational only here, the Dashboard
+  // shows the prompt if it's getting stale.
+  const statusLine = el('p', {
+    class: 'form-group__hint',
+    style: { marginBottom: 'var(--space-3)', fontFamily: 'var(--font-mono)' },
+  });
+  if (lastBackedUpAt) {
+    const ageDays = Math.floor((Date.now() - new Date(lastBackedUpAt).getTime()) / 86400000);
+    const dateStr = new Date(lastBackedUpAt).toLocaleString();
+    statusLine.textContent = `Last backup: ${dateStr} (${ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`})`;
+  } else {
+    statusLine.textContent = 'No backup recorded yet — download or import one to start tracking.';
+  }
+  page.append(statusLine);
 
   const exportBtn = el('button', { class: 'button' }, 'Download backup (.json)');
   exportBtn.addEventListener('click', async () => {
     const data = await exportAll();
+    // Stamp _meta.exportedAt so a re-import can use it for freshness.
+    if (!data._meta) data._meta = {};
+    data._meta.exportedAt = new Date().toISOString();
+    data._meta.app = 'penny-farthing';
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -343,12 +365,36 @@ function renderBackupSection() {
     a.download = `penny-farthing-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    // Stamp the moment of backup. Used by the Dashboard freshness prompt.
+    const cur = (await get('settings', 'main')) || { id: 'main' };
+    cur.lastBackedUpAt = new Date().toISOString();
+    await put('settings', cur);
     toast('Backup downloaded');
+  });
+
+  // Copy-to-clipboard alternative — useful if you want to send via
+  // WhatsApp / email / messaging app without saving a file first.
+  const clipBtn = el('button', { class: 'button button--ghost' }, 'Copy backup to clipboard');
+  clipBtn.addEventListener('click', async () => {
+    try {
+      const data = await exportAll();
+      if (!data._meta) data._meta = {};
+      data._meta.exportedAt = new Date().toISOString();
+      data._meta.app = 'penny-farthing';
+      const text = JSON.stringify(data, null, 2);
+      await navigator.clipboard.writeText(text);
+      const cur = (await get('settings', 'main')) || { id: 'main' };
+      cur.lastBackedUpAt = new Date().toISOString();
+      await put('settings', cur);
+      toast(`Backup copied (${(text.length / 1024).toFixed(1)} kB) — paste anywhere safe`);
+    } catch (err) {
+      toast(`Couldn't copy: ${err.message}`, { error: true });
+    }
   });
 
   const importInput = el('input', { type: 'file', accept: 'application/json', id: 'import-file',
     style: { display: 'none' } });
-  const importBtn = el('button', { class: 'button button--ghost' }, 'Restore from backup…');
+  const importBtn = el('button', { class: 'button button--ghost' }, 'Restore from file…');
   importBtn.addEventListener('click', () => importInput.click());
 
   importInput.addEventListener('change', async (e) => {
@@ -359,6 +405,44 @@ function renderBackupSection() {
       const text = await file.text();
       const data = JSON.parse(text);
       await importAll(data);
+      // Treat the import as freshly-backed-up. If the file is recent, the
+      // user is back in sync; if it's old, the prompt re-emerges to nudge
+      // a fresh download. Use the file's _meta.exportedAt if available,
+      // else now.
+      const importedAt = data?._meta?.exportedAt || new Date().toISOString();
+      const cur = (await get('settings', 'main')) || { id: 'main' };
+      cur.lastBackedUpAt = importedAt;
+      await put('settings', cur);
+      toast('Backup restored');
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      toast(`Restore failed: ${err.message}`, { error: true });
+    }
+  });
+
+  // Paste-from-text restore — if the user got the JSON via WhatsApp / email
+  // and it's just sitting on their clipboard, this is the friction-free path.
+  const pasteArea = el('textarea', {
+    rows: 4,
+    class: 'input',
+    placeholder: 'Or paste backup JSON here, then click "Restore from text"…',
+    style: { fontFamily: 'monospace', fontSize: '0.8rem', marginTop: 'var(--space-3)' },
+  });
+  const pasteBtn = el('button', { class: 'button button--ghost' }, 'Restore from text');
+  pasteBtn.addEventListener('click', async () => {
+    const text = pasteArea.value.trim();
+    if (!text) {
+      toast('Paste backup JSON first', { error: true });
+      return;
+    }
+    if (!confirm('Restoring will REPLACE all current data. Continue?')) return;
+    try {
+      const data = JSON.parse(text);
+      await importAll(data);
+      const importedAt = data?._meta?.exportedAt || new Date().toISOString();
+      const cur = (await get('settings', 'main')) || { id: 'main' };
+      cur.lastBackedUpAt = importedAt;
+      await put('settings', cur);
       toast('Backup restored');
       setTimeout(() => location.reload(), 800);
     } catch (err) {
@@ -367,7 +451,9 @@ function renderBackupSection() {
   });
 
   page.append(
-    el('div', { class: 'button-row' }, exportBtn, importBtn, importInput),
+    el('div', { class: 'button-row' }, exportBtn, clipBtn, importBtn, importInput),
+    pasteArea,
+    el('div', { class: 'button-row', style: { marginTop: 'var(--space-2)' } }, pasteBtn),
   );
   return page;
 }
