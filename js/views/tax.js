@@ -128,15 +128,24 @@ function renderYearCard(year, data, settings, isCurrent, opts = {}) {
 
   // --- Build the card ---
 
+  // Filed-with-HMRC marker. When set on the per-year settings, the user has
+  // submitted Self Assessment for this year; we collapse the year by default
+  // to keep the focus on the active year, with a one-click expand.
+  const isFiled = !!settings?.lossesReported;
+
+  const filedBadge = isFiled
+    ? el('span', { class: 'pill pill--gain', title: 'Marked as filed with HMRC in Settings' }, '✓ Filed')
+    : null;
+
   const header = el('div', { class: 'ledger-page__heading' },
     el('h2', {}, `Tax year ${year}`),
-    el('div', { style: { display: 'flex', gap: 'var(--space-2)', alignItems: 'center' } },
+    el('div', { style: { display: 'flex', gap: 'var(--space-2)', alignItems: 'center', flexWrap: 'wrap' } },
       el('span', { class: 'pill' + (isCurrent ? ' pill--accent' : '') },
         isCurrent ? 'Current' : 'Closed'),
+      filedBadge,
       el('button', {
         class: 'button button--ghost button-sm',
         onclick: () => {
-          // Route target — the actual report view is built in the next phase
           location.hash = `#/print?year=${encodeURIComponent(year)}`;
         },
         title: `Generate printable SA108 summary for ${year}`,
@@ -256,16 +265,33 @@ function renderYearCard(year, data, settings, isCurrent, opts = {}) {
   const standardDisposals = data.disposals.filter((d) => !d.isCfd);
   const cfdDisposals = data.disposals.filter((d) => d.isCfd);
 
-  return el('section', { class: 'ledger-page' },
-    header,
+  // Body content — when the year is filed, wrap it in a <details> element
+  // so it starts collapsed. The header (title + Filed badge + Print button)
+  // stays always visible. Active years render fully expanded as before.
+  const bodyChildren = [
     el('div', { style: { marginBottom: 'var(--space-3)' } }, sedBadge),
     summary,
     breakdown,
     sedScenarios,
-    // Replace the generic disposal list with a segmented one
     renderDisposalList('Stock / ETF / crypto disposals', standardDisposals),
     cfdBlock,
     cfdDisposals.length > 0 ? renderDisposalList('CFD disposals', cfdDisposals) : null,
+  ];
+
+  if (isFiled) {
+    const details = el('details', { class: 'tax-year-details' },
+      el('summary', { class: 'tax-year-details__summary' },
+        el('span', {}, `Filed: net ${formatCurrency(netGbp, 'GBP')} · ${data.disposals.length} disposals`),
+        el('span', { class: 'tax-year-details__hint' }, 'Tap to expand'),
+      ),
+      el('div', { class: 'tax-year-details__body' }, ...bodyChildren),
+    );
+    return el('section', { class: 'ledger-page' }, header, details);
+  }
+
+  return el('section', { class: 'ledger-page' },
+    header,
+    ...bodyChildren,
   );
 }
 

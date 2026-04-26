@@ -24,7 +24,7 @@
  *   - Results are cached in the 'fxRates' store keyed by '{CCY}-GBP-{date}'.
  */
 
-import { put, get } from '../storage/indexeddb.js';
+import { put, get, getAll } from '../storage/indexeddb.js';
 
 const FRANKFURTER_BASE = 'https://api.frankfurter.dev/v1';
 
@@ -150,18 +150,20 @@ export async function ensureFxRates(transactions) {
   for (const t of transactions) {
     checked++;
     // GBP and GBX are trivial — no fetch needed, but we should normalise fxRate
-    if (t.currency === 'GBP' && t.fxRate !== 1) needsUpdate.push({ txn: t, rate: 1 });
-    if (t.currency === 'GBX' && t.fxRate !== 1) needsUpdate.push({ txn: t, rate: 1 });
+    if (t.currency === 'GBP' && t.fxRate !== 1) needsUpdate.push({ txn: t, rate: 1, source: 'trivial' });
+    if (t.currency === 'GBX' && t.fxRate !== 1) needsUpdate.push({ txn: t, rate: 1, source: 'trivial' });
     if (t.currency === 'GBP' || t.currency === 'GBX') continue;
 
     // Manual rates are sacred — never overwrite
     if (t.fxSource === 'manual') continue;
 
-    // If already auto-fetched and rate looks reasonable, skip
-    if (t.fxSource === 'auto' && t.fxRate > 0) continue;
+    // If we've previously fetched a real rate from Frankfurter, no need to
+    // refetch. Only the new 'frankfurter' marker counts as "already done".
+    // Old 'auto' records are precisely the ones that were saved with
+    // fxRate=1 awaiting backfill — they DO need fetching.
+    if (t.fxSource === 'frankfurter' && t.fxRate > 0 && t.fxRate !== 1) continue;
 
-    // If fxRate is the default 1.0 for a foreign currency, that's suspicious
-    // and we should try to fetch. Same if no fxSource is set yet.
+    // Anything else: needs fetching.
     needed.add(`${t.currency}::${t.date}`);
   }
 
@@ -185,7 +187,7 @@ export async function ensureFxRates(transactions) {
     const key = `${t.currency}::${t.date}`;
     const rate = rateMap.get(key);
     if (rate !== undefined) {
-      needsUpdate.push({ txn: t, rate, source: 'auto' });
+      needsUpdate.push({ txn: t, rate, source: 'frankfurter' });
     }
   }
 
@@ -198,6 +200,21 @@ export async function ensureFxRates(transactions) {
   }
 
   return { checked, updated, failed };
+}
+
+/**
+ * Convenience wrapper for the Refresh-prices flow. Loads all transactions
+ * from storage, calls ensureFxRates to backfill anything that needs a
+ * Frankfurter rate, and returns a summary suitable for toast display.
+ *
+ * Used by the Holdings "Refresh prices" button so a single user action
+ * keeps both stock prices AND historical FX rates current. No-op if
+ * everything already has a real rate.
+ */
+export async function backfillFxRates() {
+  const txns = await getAll('transactions');
+  const result = await ensureFxRates(txns);
+  return result;
 }
 
 /**

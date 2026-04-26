@@ -12,6 +12,7 @@ import { el, formatCurrency, formatNumber, toast } from '../ui.js';
 import { computePortfolio } from '../engine/portfolio.js';
 import { getPrice, setManualPrice, refreshAllPrices } from '../engine/prices.js';
 import { computeSellNow } from '../engine/sell-now.js';
+import { backfillFxRates } from '../engine/fx.js';
 import { get, getAll } from '../storage/indexeddb.js';
 import { ukTaxYear } from '../storage/schema.js';
 import { navigate } from '../router.js';
@@ -117,6 +118,13 @@ export async function renderHoldings(mount) {
     scenarioChips.append(chip);
   }
 
+  const scenarioGroup = el('div', {
+    style: {
+      display: 'flex', alignItems: 'center', gap: 'var(--space-2)',
+      flexWrap: 'wrap',
+    },
+  }, scenarioLabel, scenarioChips);
+
   const controls = el('div', {
     style: {
       display: 'flex', alignItems: 'center',
@@ -124,7 +132,7 @@ export async function renderHoldings(mount) {
     },
   }, refreshBtn, refreshStatus,
     el('div', { style: { flex: '1' } }),  // spacer
-    scenarioLabel, scenarioChips,
+    scenarioGroup,
   );
 
   refreshBtn.addEventListener('click', async () => {
@@ -133,13 +141,26 @@ export async function renderHoldings(mount) {
       return;
     }
     refreshBtn.disabled = true;
-    refreshStatus.textContent = 'Fetching…';
+    refreshStatus.textContent = 'Fetching prices…';
     try {
       const assets = await getAll('assets');
       const assetsInHoldings = assets.filter((a) =>
         portfolio.holdings.some((h) => h.asset.id === a.id));
-      const result = await refreshAllPrices(assetsInHoldings, apiKey);
-      toast(`Updated ${result.succeeded} · skipped ${result.skipped} · failed ${result.failed}`);
+      const priceResult = await refreshAllPrices(assetsInHoldings, apiKey);
+
+      // FX backfill — find any transactions still flagged as needing rates
+      // and pull them from Frankfurter. Works on legacy 'auto' records as
+      // well as anything else where currency != GBP and fxRate is still 1.
+      // No-op if nothing needs backfilling, so it's safe to run every time.
+      refreshStatus.textContent = 'Checking FX rates…';
+      const fxResult = await backfillFxRates();
+
+      let summary = `Prices: ${priceResult.succeeded} updated`;
+      if (priceResult.failed > 0) summary += `, ${priceResult.failed} failed`;
+      if (fxResult.updated > 0) summary += ` · FX: ${fxResult.updated} backfilled`;
+      if (fxResult.failed > 0) summary += `, ${fxResult.failed} FX failed`;
+      toast(summary);
+
       // Re-render
       mount.innerHTML = '';
       await renderHoldings(mount);

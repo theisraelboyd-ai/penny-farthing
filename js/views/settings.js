@@ -147,13 +147,23 @@ async function renderSedSection(currentYear, priorYear) {
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
       const sedChoice = form.querySelector(`#sed-status-${year}`).value;
+      const wasReported = (await get('taxYears', year))?.lossesReported || false;
+      const nowReported = form.querySelector(`#sed-reported-${year}`).value === 'true';
       await put('taxYears', {
         year,
         sedStatus: sedChoice || null,  // null = use app-wide default
         nonSedTaxableIncome: parseFloat(form.querySelector(`#sed-income-${year}`).value || '0'),
-        lossesReported: form.querySelector(`#sed-reported-${year}`).value === 'true',
+        lossesReported: nowReported,
       });
-      toast(`Saved ${year}`);
+      // If marking complete (transition from not-reported to reported),
+      // celebrate the closure — reload so Dashboard tile + Tax view pick up
+      // the new "filed" state and downstream cards collapse appropriately.
+      if (!wasReported && nowReported) {
+        toast(`${year} marked as filed with HMRC`);
+        setTimeout(() => location.reload(), 800);
+      } else {
+        toast(`Saved ${year}`);
+      }
     });
 
     return form;

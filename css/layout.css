@@ -875,6 +875,15 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+/* Subtle alternating shading helps the eye track separate cards while
+   scrolling. Light theme: very pale grey wash. Dark theme: barely-there
+   white wash to keep contrast with the page background. */
+.holding-card:nth-child(even) {
+  background: var(--surface-2);
+}
+[data-theme="dark"] .holding-card:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
 
 .holding-card__header {
   display: flex;
@@ -967,6 +976,12 @@
   flex-direction: column;
   gap: var(--space-3);
 }
+.txn-card:nth-child(even) {
+  background: var(--surface-2);
+}
+[data-theme="dark"] .txn-card:nth-child(even) {
+  background: rgba(255, 255, 255, 0.02);
+}
 .txn-card__header {
   display: flex;
   align-items: center;
@@ -1014,4 +1029,38 @@
   justify-content: flex-end;
   border-top: 1px solid var(--border);
   padding-top: var(--space-2);
+}
+
+/* Collapsible filed-year wrapper on the Tax view. The <details> element
+   starts collapsed; the <summary> is the only thing visible until the user
+   taps to expand. Keeps the focus on the active year while archived years
+   stay accessible. */
+.tax-year-details > summary.tax-year-details__summary {
+  list-style: none;
+  cursor: pointer;
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--f-sm);
+  user-select: none;
+}
+.tax-year-details > summary.tax-year-details__summary::-webkit-details-marker {
+  display: none;
+}
+.tax-year-details__hint {
+  color: var(--text-muted);
+  font-size: var(--f-xs);
+}
+.tax-year-details[open] .tax-year-details__hint::before {
+  content: 'Tap to collapse · ';
+}
+.tax-year-details[open] .tax-year-details__hint {
+  /* No content swap needed — Chrome handles toggle */
+}
+.tax-year-details__body {
+  margin-top: var(--space-4);
 }
