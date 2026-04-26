@@ -13,6 +13,7 @@ import { renderSettings } from './views/settings.js';
 import { renderTax } from './views/tax.js';
 import { renderImport } from './views/import.js';
 import { renderPrint } from './views/print.js';
+import { renderDevRepairFx } from './views/dev-repair-fx.js';
 import { get, put } from './storage/indexeddb.js';
 
 /* ============================================================
@@ -117,6 +118,10 @@ registerRoute('/closed',        renderClosedPosition);
 registerRoute('/import',        renderImport);
 registerRoute('/tax',           renderTax);
 registerRoute('/print',         renderPrint);
+// Hidden dev route — accessible only by typing the URL fragment.
+// Not in any nav. Used for one-time surgical repairs to user data
+// (e.g. /dev/repair-fx fixes the fxRate=1 silent-default bug).
+registerRoute('/dev/repair-fx', renderDevRepairFx);
 registerRoute('/settings',      renderSettings);
 
 initTheme();
