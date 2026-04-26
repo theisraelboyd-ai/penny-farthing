@@ -7,6 +7,7 @@ import { computePortfolio } from '../engine/portfolio.js';
 import { navigate } from '../router.js';
 import { glyphFor, txnStyle } from '../visual/glyphs.js';
 import { ukTaxYear } from '../storage/schema.js';
+import { get } from '../storage/indexeddb.js';
 
 export async function renderDashboard(mount) {
   const portfolio = await computePortfolio();
@@ -51,11 +52,39 @@ export async function renderDashboard(mount) {
   const recentClosedYear = closedYearsWithData[0] || null;
   const recentClosedData = recentClosedYear ? portfolio.byTaxYear[recentClosedYear] : null;
 
+  // Backup freshness — soft prompt at 7+ days, prominent at 30+ days. Uses
+  // the timestamp written by the backup section in Settings. Read here so
+  // the dashboard naturally surfaces the nag without being intrusive on
+  // every other page.
+  const settings = await get('settings', 'main');
+  const lastBackedUpAt = settings?.lastBackedUpAt || null;
+  let backupBanner = null;
+  if (!lastBackedUpAt) {
+    backupBanner = renderBackupBanner({
+      level: 'soft',
+      message: 'No backup recorded yet. Download a JSON copy from Settings to keep your data safe.',
+    });
+  } else {
+    const ageDays = (Date.now() - new Date(lastBackedUpAt).getTime()) / 86400000;
+    if (ageDays >= 30) {
+      backupBanner = renderBackupBanner({
+        level: 'urgent',
+        message: `Last backup is ${Math.floor(ageDays)} days old. Download a fresh copy now to keep your data safe.`,
+      });
+    } else if (ageDays >= 7) {
+      backupBanner = renderBackupBanner({
+        level: 'soft',
+        message: `Backed up ${Math.floor(ageDays)} days ago — consider downloading a fresh copy.`,
+      });
+    }
+  }
+
   mount.append(
     el('div', { class: 'view-header' },
       el('h2', {}, 'Dashboard'),
       el('p', {}, 'Portfolio summary and holdings overview.'),
     ),
+    backupBanner,
 
     el('div', { class: 'stat-grid' },
       statTile('Holdings cost basis',
@@ -198,6 +227,33 @@ export async function renderDashboard(mount) {
       ),
     );
   }
+}
+
+function renderBackupBanner({ level, message }) {
+  // level: 'soft' (amber, dismissible-feeling) or 'urgent' (loss-coloured, prominent)
+  const isUrgent = level === 'urgent';
+  return el('div', {
+    class: `backup-banner ${isUrgent ? 'backup-banner--urgent' : 'backup-banner--soft'}`,
+    style: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: 'var(--space-3)',
+      padding: 'var(--space-3) var(--space-4)',
+      marginBottom: 'var(--space-4)',
+      borderRadius: 'var(--radius-md)',
+      borderLeft: `3px solid ${isUrgent ? 'var(--loss)' : 'var(--warn)'}`,
+      background: isUrgent ? 'var(--loss-soft)' : 'var(--warn-soft)',
+      fontSize: 'var(--f-sm)',
+      flexWrap: 'wrap',
+    },
+  },
+    el('span', {}, message),
+    el('button', {
+      class: 'button button-sm',
+      style: { marginLeft: 'auto' },
+      onclick: () => { location.hash = '#/settings'; },
+    }, 'Open Settings'),
+  );
 }
 
 function statTile(label, value, sub, tone) {

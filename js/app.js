@@ -1,7 +1,6 @@
 /* Penny Farthing — App entry
  *
- * Wires the router, registers the service worker, sets up theme toggle,
- * privacy mode, and the dirty-state sync banner.
+ * Wires the router, registers the service worker, sets up theme toggle.
  */
 
 import { registerRoute, start } from './router.js';
@@ -14,18 +13,11 @@ import { renderSettings } from './views/settings.js';
 import { renderTax } from './views/tax.js';
 import { renderImport } from './views/import.js';
 import { renderPrint } from './views/print.js';
-import { get, put, setMutationHook } from './storage/indexeddb.js';
-import {
-  markDirty, applyPrivacyToDom, readPrivacySync, setPrivacyMode, isPrivacyOn,
-} from './app-state.js';
-import { mountSyncBanner } from './sync-banner.js';
+import { get, put } from './storage/indexeddb.js';
 
-// Apply privacy mode synchronously BEFORE any view renders, to prevent
-// the brief flash-of-visible-values when a user reloads with privacy on.
-applyPrivacyToDom(readPrivacySync());
-
-// Hook the data layer to mark dirty on every mutation.
-setMutationHook(markDirty);
+/* ============================================================
+   Routes
+   ============================================================ */
 
 /* ============================================================
    Theme
@@ -49,21 +41,50 @@ async function initTheme() {
 }
 
 /* ============================================================
-   Privacy toggle (in masthead)
+   Privacy mode
+
+   Toggles a `data-privacy` attribute on <html>. Read synchronously
+   from localStorage so the blur applies before first paint —
+   prevents the brief "values visible then hidden" flash on reload.
+   Persisted in both localStorage (for synchronous boot read) and
+   the settings IndexedDB record (for backup portability).
    ============================================================ */
+
+const PRIVACY_KEY = 'penny-farthing-privacy';
+
+function applyPrivacyToDom(on) {
+  if (on) {
+    document.documentElement.dataset.privacy = 'on';
+  } else {
+    delete document.documentElement.dataset.privacy;
+  }
+}
+
+// Apply synchronously at module load — must run before any view renders
+applyPrivacyToDom(localStorage.getItem(PRIVACY_KEY) === '1');
 
 function initPrivacyToggle() {
   const btn = document.getElementById('privacy-toggle');
   if (!btn) return;
-  // Sync UI to current state
   const refresh = () => {
-    const on = isPrivacyOn();
+    const on = document.documentElement.dataset.privacy === 'on';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
     btn.title = on ? 'Privacy mode on — click to show values' : 'Hide values';
   };
   refresh();
   btn.addEventListener('click', async () => {
-    await setPrivacyMode(!isPrivacyOn());
+    const wasOn = document.documentElement.dataset.privacy === 'on';
+    const nowOn = !wasOn;
+    applyPrivacyToDom(nowOn);
+    try {
+      localStorage.setItem(PRIVACY_KEY, nowOn ? '1' : '0');
+    } catch { /* private mode might block — fail open */ }
+    // Best-effort persist to settings; not fatal if it fails
+    try {
+      const s = (await get('settings', 'main')) || { id: 'main' };
+      s.privacyMode = nowOn;
+      await put('settings', s);
+    } catch { /* ignore */ }
     refresh();
   });
 }
@@ -103,6 +124,4 @@ initPrivacyToggle();
 registerSw();
 
 const mount = document.getElementById('app');
-const bannerZone = document.getElementById('banner-zone');
-mountSyncBanner(bannerZone);
 start(mount);

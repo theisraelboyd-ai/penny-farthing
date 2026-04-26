@@ -35,7 +35,6 @@ import { computePortfolio } from '../engine/portfolio.js';
 import { get } from '../storage/indexeddb.js';
 import { ukTaxYear, ukTaxYearBounds } from '../storage/schema.js';
 import { navigate } from '../router.js';
-import { isPrivacyOn, setPrivacyMode } from '../app-state.js';
 
 // HMRC CGT constants — these apply to 2024-25 onward (post-Autumn Budget 2024)
 const ANNUAL_EXEMPT_AMOUNT = 3000;
@@ -48,36 +47,6 @@ export async function renderPrint(mount, params = {}) {
   if (!year || !/^\d{4}-\d{2}$/.test(year)) {
     mount.append(renderError('Invalid or missing tax year',
       'This page requires a tax year in the format "2025-26".'));
-    return;
-  }
-
-  // Privacy guard. If on, refuse to render the document — printing it
-  // wouldn't be useful (CSS blur isn't reliable across all print pipelines)
-  // and accidentally generating a HMRC-defensible PDF with blurred figures
-  // is actively bad. Offer a one-click toggle off + retry.
-  if (isPrivacyOn()) {
-    mount.append(
-      el('section', { class: 'ledger-page' },
-        el('div', { class: 'empty-state' },
-          el('h3', {}, 'Privacy mode is on'),
-          el('p', { class: 'text-muted' },
-            'Tax printables show full figures by design — they\'re intended for your accountant or HMRC compliance review. Disable privacy mode to generate the report.'),
-          el('div', { class: 'button-row', style: { justifyContent: 'center' } },
-            el('button', {
-              class: 'button',
-              onclick: async () => {
-                await setPrivacyMode(false);
-                location.reload();
-              },
-            }, 'Disable privacy & continue'),
-            el('button', {
-              class: 'button button--ghost',
-              onclick: () => navigate('/tax'),
-            }, 'Back to Tax view'),
-          ),
-        ),
-      ),
-    );
     return;
   }
 
@@ -452,8 +421,6 @@ function renderMethodologySection() {
       methodologyBlock('Seafarer\'s Earnings Deduction',
         'SED (ITEPA 2003 s.378) affects which CGT rate band applies by reducing taxable income. This summary shows CGT under both "SED succeeds" and "SED fails" scenarios; the user\'s declared status determines which figure is treated as primary.'),
     ),
-    el('p', { class: 'print-disclaimer' },
-      'This document is a computational summary generated from transaction data entered or imported by the user. It is not tax advice. Figures should be verified against broker statements and reviewed by a qualified accountant before submission to HMRC.'),
   );
 }
 

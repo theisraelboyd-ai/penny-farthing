@@ -13,7 +13,7 @@ import { el, toast } from '../ui.js';
 import { get, put, getAll, remove, exportAll, importAll, uuid } from '../storage/indexeddb.js';
 import { ukTaxYear } from '../storage/schema.js';
 
-export async function renderSettings(mount, params = {}) {
+export async function renderSettings(mount) {
   const settings = (await get('settings', 'main')) || { id: 'main' };
   const currentYear = ukTaxYear(new Date());
   const priorYear = (() => {
@@ -32,20 +32,10 @@ export async function renderSettings(mount, params = {}) {
     await renderSedSection(currentYear, priorYear),
     renderConnectionsSection(settings),
     await renderAccountsSection(),
-    await renderSyncSection(),
+    await renderBackupSection(),
     renderDeveloperSection(),
     renderAboutSection(),
   );
-
-  // If routed here with a focus param (e.g. from the sync banner), scroll
-  // the requested section into view. Done after render via requestAnimationFrame
-  // so the DOM has been laid out.
-  if (params.focus) {
-    requestAnimationFrame(() => {
-      const target = document.getElementById(params.focus);
-      if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }
 }
 
 function renderPreferencesSection(settings) {
@@ -180,247 +170,52 @@ function renderConnectionsSection(settings) {
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
       el('h2', {}, 'Connections'),
+      el('span', { class: 'ledger-page__folio' }, 'Connections'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
-      'API keys for live prices. Stored locally only — they never leave your device unless you make a request to the relevant service.'),
+      'API key for prices (Finnhub). GitHub token for Gist sync. Stored locally, never sent anywhere else.'),
   );
-
-  // Finnhub field with an inline info pop-out
-  const finnhubInfo = el('div', { class: 'info-popout', style: { display: 'none' } });
-  finnhubInfo.innerHTML = `
-    <h4>How to set up Finnhub for live prices</h4>
-    <ol>
-      <li>Go to <a href="https://finnhub.io/register" target="_blank" rel="noopener">finnhub.io/register</a> and create a free account (no credit card needed).</li>
-      <li>After signing up, you'll land on a dashboard. Your API key is shown there — it's a long string of letters and numbers.</li>
-      <li>Copy the key.</li>
-      <li>Paste it into the field below and click "Save connections."</li>
-      <li>The free tier allows 60 requests per minute, more than enough for this app's pricing needs.</li>
-    </ol>
-    <p>Penny Farthing only sends ticker symbols (e.g. "TSLA") to Finnhub. Your transaction history, costs, and personal data never leave your device.</p>
-  `;
-
-  const finnhubInfoBtn = el('button', {
-    type: 'button',
-    class: 'info-btn',
-    'aria-label': 'How to set up Finnhub',
-    onclick: () => {
-      const visible = finnhubInfo.style.display !== 'none';
-      finnhubInfo.style.display = visible ? 'none' : 'block';
-      finnhubInfoBtn.setAttribute('aria-expanded', visible ? 'false' : 'true');
-    },
-  }, '?');
 
   const form = el('form', {},
     el('div', { class: 'form-group' },
-      el('div', { class: 'form-group__label-row' },
-        el('label', { for: 'finnhub-key' }, 'Finnhub API key'),
-        finnhubInfoBtn,
-      ),
+      el('label', { for: 'finnhub-key' }, 'Finnhub API key'),
       el('input', { type: 'password', id: 'finnhub-key', class: 'input',
-        value: settings?.finnhubApiKey || '',
+        value: settings.finnhubApiKey || '',
         placeholder: 'Paste your free Finnhub API key' }),
       el('p', { class: 'form-group__hint' },
-        'Required for live price refresh on Holdings. Without it the app still works but prices need manual entry.'),
-      finnhubInfo,
+        'Get one free at finnhub.io/register. Day 3 will use this for live prices.'),
+    ),
+    el('div', { class: 'form-group' },
+      el('label', { for: 'gh-token' }, 'GitHub Personal Access Token'),
+      el('input', { type: 'password', id: 'gh-token', class: 'input',
+        value: settings.githubToken || '',
+        placeholder: 'ghp_...' }),
+      el('p', { class: 'form-group__hint' },
+        'Needs only the "gist" scope. See the walkthrough in /docs/.'),
+    ),
+    el('div', { class: 'form-group' },
+      el('label', { for: 'gist-id' }, 'Gist ID (optional)'),
+      el('input', { type: 'text', id: 'gist-id', class: 'input',
+        value: settings.gistId || '',
+        placeholder: 'Leave blank to create a new one on first sync' }),
     ),
     el('button', { type: 'submit', class: 'button' }, 'Save connections'),
   );
 
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
-    const updated = (await get('settings', 'main')) || { id: 'main' };
-    updated.finnhubApiKey = form.querySelector('#finnhub-key').value.trim() || null;
+    const updated = {
+      ...settings,
+      id: 'main',
+      finnhubApiKey: form.querySelector('#finnhub-key').value.trim() || null,
+      githubToken: form.querySelector('#gh-token').value.trim() || null,
+      gistId: form.querySelector('#gist-id').value.trim() || null,
+    };
     await put('settings', updated);
     toast('Connections saved');
   });
 
   page.append(form);
-  return page;
-}
-
-async function renderSyncSection() {
-  const settings = (await get('settings', 'main')) || {};
-  const { localFileSyncSupported } = await import('../sync.js');
-  const supportsLocalFile = localFileSyncSupported();
-  const lastSyncedAt = settings.lastSyncedAt || null;
-  const syncFileName = settings.syncFileName || null;
-
-  const page = el('section', {
-    class: 'ledger-page',
-    id: 'sync',  // for hash-fragment scroll target from sync banner
-  });
-
-  // Section header with info button
-  const syncInfo = el('div', { class: 'info-popout', style: { display: 'none' } });
-  syncInfo.innerHTML = `
-    <h4>How sync works in Penny Farthing</h4>
-    <p>The app stores all your data in your browser's local database. To use the same data on another device — or to keep a backup — you have three options:</p>
-    <ol>
-      <li><strong>Export to clipboard / Import from text</strong> — works on any browser, any device. Copy the JSON, paste it on the other device. Manual but bulletproof.</li>
-      <li><strong>Local file sync</strong> (Chrome / Edge desktop only) — pick a file inside your OneDrive, Dropbox, iCloud or Google Drive folder. The app writes your data to that file when you click sync; the cloud provider's desktop app handles cross-device propagation. No third-party app registration needed.</li>
-      <li><strong>Plain file download</strong> — click the sync button to download a timestamped JSON file. Save it manually wherever you like.</li>
-    </ol>
-    <p><strong>Why no built-in OneDrive / Google Drive integration?</strong> Those services require OAuth app registration with each provider, embedded forever in the app code. If the registration ever broke, every user's sync would break. The local-file-sync approach uses your own already-running cloud sync client — no extra registration, no maintenance burden, no central point of failure.</p>
-  `;
-
-  const syncInfoBtn = el('button', {
-    type: 'button',
-    class: 'info-btn',
-    'aria-label': 'How sync works',
-    onclick: () => {
-      const visible = syncInfo.style.display !== 'none';
-      syncInfo.style.display = visible ? 'none' : 'block';
-      syncInfoBtn.setAttribute('aria-expanded', visible ? 'false' : 'true');
-    },
-  }, '?');
-
-  page.append(
-    el('div', { class: 'ledger-page__heading' },
-      el('h2', {}, 'Sync & backup'),
-      syncInfoBtn,
-    ),
-    el('p', { class: 'ledger-page__subtitle' },
-      lastSyncedAt
-        ? `Last synced ${new Date(lastSyncedAt).toLocaleString()}.`
-        : 'Not synced yet.',
-    ),
-    syncInfo,
-  );
-
-  // ===== Quick action: download backup =====
-  const downloadBtn = el('button', { type: 'button', class: 'button' }, 'Download backup file');
-  downloadBtn.addEventListener('click', async () => {
-    try {
-      const { performQuickSync } = await import('../sync-banner.js');
-      const result = await performQuickSync();
-      if (result.ok) toast('Backup downloaded'); else toast(`Failed: ${result.reason}`, { error: true });
-    } catch (err) {
-      toast(`Failed: ${err.message}`, { error: true });
-    }
-  });
-
-  // ===== Clipboard export =====
-  const clipboardBtn = el('button', { type: 'button', class: 'button button--ghost' }, 'Copy backup to clipboard');
-  clipboardBtn.addEventListener('click', async () => {
-    try {
-      const { clipboardExport } = await import('../sync.js');
-      const result = await clipboardExport();
-      const { markSynced } = await import('../app-state.js');
-      await markSynced();
-      toast(`Copied ${(result.bytes / 1024).toFixed(1)} KB to clipboard`);
-    } catch (err) {
-      toast(`Could not copy: ${err.message}`, { error: true });
-    }
-  });
-
-  // ===== Text import =====
-  const textImportArea = el('textarea', {
-    class: 'input',
-    rows: 4,
-    placeholder: 'Paste the JSON content of a previous backup here…',
-    style: { fontFamily: 'var(--font-mono)', fontSize: 'var(--f-xs)' },
-  });
-  const textImportBtn = el('button', { type: 'button', class: 'button button--ghost' }, 'Import from text');
-  textImportBtn.addEventListener('click', async () => {
-    const text = textImportArea.value.trim();
-    if (!text) { toast('Paste backup text first', { error: true }); return; }
-    if (!confirm('Importing will REPLACE all current data with the contents of the backup. Continue?')) return;
-    try {
-      const { textImport } = await import('../sync.js');
-      const result = await textImport(text);
-      const { markSynced } = await import('../app-state.js');
-      await markSynced();
-      const counts = Object.entries(result.counts).map(([k, v]) => `${v} ${k}`).join(', ');
-      toast(`Imported: ${counts}`);
-      setTimeout(() => location.reload(), 1200);
-    } catch (err) {
-      toast(`Import failed: ${err.message}`, { error: true });
-    }
-  });
-
-  page.append(
-    el('h3', { style: { marginTop: 'var(--space-4)', fontSize: 'var(--f-md)' } }, 'Quick actions'),
-    el('div', { class: 'button-row', style: { flexWrap: 'wrap' } },
-      downloadBtn, clipboardBtn,
-    ),
-    el('div', { class: 'form-group', style: { marginTop: 'var(--space-4)' } },
-      el('label', {}, 'Restore from a previous backup'),
-      textImportArea,
-      el('div', { class: 'button-row' }, textImportBtn),
-    ),
-  );
-
-  // ===== Local file sync (Chromium only) =====
-  const localSyncBlock = el('div', { class: 'sync-localfile-block' });
-  if (supportsLocalFile) {
-    const connectBtn = el('button', { type: 'button', class: 'button' },
-      syncFileName ? `Reconnect: ${syncFileName}` : 'Connect a sync file');
-    const loadBtn = el('button', { type: 'button', class: 'button button--ghost' }, 'Load from existing file');
-    const writeBtn = el('button', { type: 'button', class: 'button' }, 'Write to sync file');
-
-    connectBtn.addEventListener('click', async () => {
-      try {
-        const { connectLocalSyncFile } = await import('../sync.js');
-        const result = await connectLocalSyncFile();
-        const { markSynced } = await import('../app-state.js');
-        await markSynced();
-        toast(`Connected: ${result.name}`);
-        setTimeout(() => location.reload(), 800);
-      } catch (err) {
-        if (err.name !== 'AbortError') toast(`Could not connect: ${err.message}`, { error: true });
-      }
-    });
-
-    loadBtn.addEventListener('click', async () => {
-      if (!confirm('Loading will REPLACE all current data with the contents of the file. Continue?')) return;
-      try {
-        const { loadFromSyncFile } = await import('../sync.js');
-        const result = await loadFromSyncFile();
-        const { markSynced } = await import('../app-state.js');
-        await markSynced();
-        const counts = Object.entries(result.counts).map(([k, v]) => `${v} ${k}`).join(', ');
-        toast(`Loaded: ${counts}`);
-        setTimeout(() => location.reload(), 1200);
-      } catch (err) {
-        if (err.name !== 'AbortError') toast(`Load failed: ${err.message}`, { error: true });
-      }
-    });
-
-    writeBtn.addEventListener('click', async () => {
-      try {
-        const { writeToSyncFile } = await import('../sync.js');
-        const result = await writeToSyncFile();
-        const { markSynced } = await import('../app-state.js');
-        await markSynced();
-        toast(`Written to ${result.name}`);
-      } catch (err) {
-        toast(`Write failed: ${err.message}`, { error: true });
-      }
-    });
-
-    localSyncBlock.append(
-      el('h3', { style: { marginTop: 'var(--space-5)', fontSize: 'var(--f-md)' } },
-        'Local file sync ',
-        el('span', { class: 'pill pill--accent' }, 'Chrome / Edge'),
-      ),
-      el('p', { class: 'form-group__hint', style: { marginBottom: 'var(--space-3)' } },
-        'Pick a file inside your OneDrive, Dropbox, iCloud Drive, or Google Drive folder on your desktop. The app will write your data to that file; the cloud provider syncs it to your other devices automatically.'),
-      el('div', { class: 'button-row', style: { flexWrap: 'wrap' } },
-        connectBtn, loadBtn, writeBtn,
-      ),
-    );
-  } else {
-    localSyncBlock.append(
-      el('h3', { style: { marginTop: 'var(--space-5)', fontSize: 'var(--f-md)' } },
-        'Local file sync ',
-        el('span', { class: 'pill' }, 'Not supported'),
-      ),
-      el('p', { class: 'form-group__hint' },
-        'Local file sync requires Chrome, Edge, or another Chromium-based desktop browser. On this browser, use Download backup or Copy to clipboard instead.'),
-    );
-  }
-  page.append(localSyncBlock);
-
   return page;
 }
 
@@ -528,19 +323,41 @@ async function renderAccountsSection() {
   return page;
 }
 
-function renderBackupSection() {
+async function renderBackupSection() {
+  const settings = await get('settings', 'main');
+  const lastBackedUpAt = settings?.lastBackedUpAt || null;
+
   const page = el('section', { class: 'ledger-page' },
     el('div', { class: 'ledger-page__heading' },
       el('h2', {}, 'Backup & restore'),
       el('span', { class: 'ledger-page__folio' }, 'JSON'),
     ),
     el('p', { class: 'ledger-page__subtitle' },
-      'Export the entire ledger as a single JSON file. Keep a copy anywhere you like.'),
+      'Export the entire ledger as a single JSON file. Keep a copy anywhere you like — email, OneDrive, WhatsApp to yourself.'),
   );
+
+  // Show last-backed-up status — informational only here, the Dashboard
+  // shows the prompt if it's getting stale.
+  const statusLine = el('p', {
+    class: 'form-group__hint',
+    style: { marginBottom: 'var(--space-3)', fontFamily: 'var(--font-mono)' },
+  });
+  if (lastBackedUpAt) {
+    const ageDays = Math.floor((Date.now() - new Date(lastBackedUpAt).getTime()) / 86400000);
+    const dateStr = new Date(lastBackedUpAt).toLocaleString();
+    statusLine.textContent = `Last backup: ${dateStr} (${ageDays === 0 ? 'today' : ageDays === 1 ? 'yesterday' : `${ageDays} days ago`})`;
+  } else {
+    statusLine.textContent = 'No backup recorded yet — download or import one to start tracking.';
+  }
+  page.append(statusLine);
 
   const exportBtn = el('button', { class: 'button' }, 'Download backup (.json)');
   exportBtn.addEventListener('click', async () => {
     const data = await exportAll();
+    // Stamp _meta.exportedAt so a re-import can use it for freshness.
+    if (!data._meta) data._meta = {};
+    data._meta.exportedAt = new Date().toISOString();
+    data._meta.app = 'penny-farthing';
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -548,12 +365,36 @@ function renderBackupSection() {
     a.download = `penny-farthing-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    // Stamp the moment of backup. Used by the Dashboard freshness prompt.
+    const cur = (await get('settings', 'main')) || { id: 'main' };
+    cur.lastBackedUpAt = new Date().toISOString();
+    await put('settings', cur);
     toast('Backup downloaded');
+  });
+
+  // Copy-to-clipboard alternative — useful if you want to send via
+  // WhatsApp / email / messaging app without saving a file first.
+  const clipBtn = el('button', { class: 'button button--ghost' }, 'Copy backup to clipboard');
+  clipBtn.addEventListener('click', async () => {
+    try {
+      const data = await exportAll();
+      if (!data._meta) data._meta = {};
+      data._meta.exportedAt = new Date().toISOString();
+      data._meta.app = 'penny-farthing';
+      const text = JSON.stringify(data, null, 2);
+      await navigator.clipboard.writeText(text);
+      const cur = (await get('settings', 'main')) || { id: 'main' };
+      cur.lastBackedUpAt = new Date().toISOString();
+      await put('settings', cur);
+      toast(`Backup copied (${(text.length / 1024).toFixed(1)} kB) — paste anywhere safe`);
+    } catch (err) {
+      toast(`Couldn't copy: ${err.message}`, { error: true });
+    }
   });
 
   const importInput = el('input', { type: 'file', accept: 'application/json', id: 'import-file',
     style: { display: 'none' } });
-  const importBtn = el('button', { class: 'button button--ghost' }, 'Restore from backup…');
+  const importBtn = el('button', { class: 'button button--ghost' }, 'Restore from file…');
   importBtn.addEventListener('click', () => importInput.click());
 
   importInput.addEventListener('change', async (e) => {
@@ -564,6 +405,44 @@ function renderBackupSection() {
       const text = await file.text();
       const data = JSON.parse(text);
       await importAll(data);
+      // Treat the import as freshly-backed-up. If the file is recent, the
+      // user is back in sync; if it's old, the prompt re-emerges to nudge
+      // a fresh download. Use the file's _meta.exportedAt if available,
+      // else now.
+      const importedAt = data?._meta?.exportedAt || new Date().toISOString();
+      const cur = (await get('settings', 'main')) || { id: 'main' };
+      cur.lastBackedUpAt = importedAt;
+      await put('settings', cur);
+      toast('Backup restored');
+      setTimeout(() => location.reload(), 800);
+    } catch (err) {
+      toast(`Restore failed: ${err.message}`, { error: true });
+    }
+  });
+
+  // Paste-from-text restore — if the user got the JSON via WhatsApp / email
+  // and it's just sitting on their clipboard, this is the friction-free path.
+  const pasteArea = el('textarea', {
+    rows: 4,
+    class: 'input',
+    placeholder: 'Or paste backup JSON here, then click "Restore from text"…',
+    style: { fontFamily: 'monospace', fontSize: '0.8rem', marginTop: 'var(--space-3)' },
+  });
+  const pasteBtn = el('button', { class: 'button button--ghost' }, 'Restore from text');
+  pasteBtn.addEventListener('click', async () => {
+    const text = pasteArea.value.trim();
+    if (!text) {
+      toast('Paste backup JSON first', { error: true });
+      return;
+    }
+    if (!confirm('Restoring will REPLACE all current data. Continue?')) return;
+    try {
+      const data = JSON.parse(text);
+      await importAll(data);
+      const importedAt = data?._meta?.exportedAt || new Date().toISOString();
+      const cur = (await get('settings', 'main')) || { id: 'main' };
+      cur.lastBackedUpAt = importedAt;
+      await put('settings', cur);
       toast('Backup restored');
       setTimeout(() => location.reload(), 800);
     } catch (err) {
@@ -572,7 +451,9 @@ function renderBackupSection() {
   });
 
   page.append(
-    el('div', { class: 'button-row' }, exportBtn, importBtn, importInput),
+    el('div', { class: 'button-row' }, exportBtn, clipBtn, importBtn, importInput),
+    pasteArea,
+    el('div', { class: 'button-row', style: { marginTop: 'var(--space-2)' } }, pasteBtn),
   );
   return page;
 }
