@@ -17,7 +17,7 @@
 import { getAll, put, remove } from './storage/indexeddb.js';
 
 const SCHEMA_VERSION = 2;
-const STORES = ['accounts', 'assets', 'transactions', 'taxYears', 'settings', 'prices'];
+const STORES = ['accounts', 'assets', 'transactions', 'taxYears', 'settings'];
 
 // ============================================================
 // Layer 1: export/import as JSON
@@ -141,48 +141,28 @@ export function localFileSyncSupported() {
  * possible but adds complexity. Acceptable trade-off for now: re-pick
  * each session is fine for a tool used periodically.)
  */
-export async function connectLocalSyncFile({ reconnect = false } = {}) {
+export async function connectLocalSyncFile() {
   if (!localFileSyncSupported()) {
     throw new Error('Local file sync requires Chrome, Edge, or another Chromium-based browser on desktop. Use Export to clipboard instead.');
   }
-  // Reconnecting: open existing file (read+write). Fresh connect: save picker
-  // so the user can place a new file in their cloud-synced folder.
-  let handle;
-  if (reconnect) {
-    const picked = await window.showOpenFilePicker({
-      types: [{
-        description: 'Penny Farthing backup',
-        accept: { 'application/json': ['.json'] },
-      }],
-      multiple: false,
-    });
-    handle = picked[0];
-  } else {
-    handle = await window.showSaveFilePicker({
-      suggestedName: 'penny-farthing-data.json',
-      types: [{
-        description: 'Penny Farthing backup',
-        accept: { 'application/json': ['.json'] },
-      }],
-    });
-  }
+  // Show a save-file picker so user can place it in their OneDrive folder
+  const handle = await window.showSaveFilePicker({
+    suggestedName: 'penny-farthing-data.json',
+    types: [{
+      description: 'Penny Farthing backup',
+      accept: { 'application/json': ['.json'] },
+    }],
+  });
   activeFileHandle = handle;
-
-  // Persist filename so we can show "Reconnect to X" on next session.
-  // Use putSilent so this housekeeping write doesn't pulse the sync banner.
-  const { putSilent, get } = await import('./storage/indexeddb.js');
+  // Mark settings so we know the user has connected at some point
+  const { put, get } = await import('./storage/indexeddb.js');
   const settings = (await get('settings', 'main')) || { id: 'main' };
   settings.syncFileConfigured = true;
   settings.syncFileName = handle.name;
-  await putSilent('settings', settings);
-
-  // For a fresh connect, write current data immediately so the file isn't
-  // empty. For reconnect, DON'T write — the file already has data and we
-  // want to read from it (or let the user explicitly trigger a write).
-  if (!reconnect) {
-    await writeToSyncFile();
-  }
-  return { ok: true, name: handle.name, reconnected: reconnect };
+  await put('settings', settings);
+  // Write current data to the file immediately so it's not empty
+  await writeToSyncFile();
+  return { ok: true, name: handle.name };
 }
 
 /**

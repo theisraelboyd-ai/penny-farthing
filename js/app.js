@@ -1,6 +1,7 @@
 /* Penny Farthing — App entry
  *
- * Wires the router, registers the service worker, sets up theme toggle.
+ * Wires the router, registers the service worker, sets up theme toggle,
+ * privacy mode, and the dirty-state sync banner.
  */
 
 import { registerRoute, start } from './router.js';
@@ -13,11 +14,18 @@ import { renderSettings } from './views/settings.js';
 import { renderTax } from './views/tax.js';
 import { renderImport } from './views/import.js';
 import { renderPrint } from './views/print.js';
-import { get, put } from './storage/indexeddb.js';
+import { get, put, setMutationHook } from './storage/indexeddb.js';
+import {
+  markDirty, applyPrivacyToDom, readPrivacySync, setPrivacyMode, isPrivacyOn,
+} from './app-state.js';
+import { mountSyncBanner } from './sync-banner.js';
 
-/* ============================================================
-   Routes
-   ============================================================ */
+// Apply privacy mode synchronously BEFORE any view renders, to prevent
+// the brief flash-of-visible-values when a user reloads with privacy on.
+applyPrivacyToDom(readPrivacySync());
+
+// Hook the data layer to mark dirty on every mutation.
+setMutationHook(markDirty);
 
 /* ============================================================
    Theme
@@ -37,6 +45,26 @@ async function initTheme() {
     const s = (await get('settings', 'main')) || { id: 'main', createdAt: new Date().toISOString() };
     s.theme = next;
     await put('settings', s);
+  });
+}
+
+/* ============================================================
+   Privacy toggle (in masthead)
+   ============================================================ */
+
+function initPrivacyToggle() {
+  const btn = document.getElementById('privacy-toggle');
+  if (!btn) return;
+  // Sync UI to current state
+  const refresh = () => {
+    const on = isPrivacyOn();
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    btn.title = on ? 'Privacy mode on — click to show values' : 'Hide values';
+  };
+  refresh();
+  btn.addEventListener('click', async () => {
+    await setPrivacyMode(!isPrivacyOn());
+    refresh();
   });
 }
 
@@ -71,7 +99,10 @@ registerRoute('/print',         renderPrint);
 registerRoute('/settings',      renderSettings);
 
 initTheme();
+initPrivacyToggle();
 registerSw();
 
 const mount = document.getElementById('app');
+const bannerZone = document.getElementById('banner-zone');
+mountSyncBanner(bannerZone);
 start(mount);

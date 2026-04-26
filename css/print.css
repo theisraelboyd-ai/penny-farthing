@@ -286,14 +286,36 @@
    ============================================================ */
 
 @media print {
+  /* Block printing entirely when privacy mode is active. The user must
+     turn off privacy first — otherwise the PDF would contain blurred
+     boxes that are useless. */
+  .is-privacy body * {
+    display: none !important;
+  }
+  .is-privacy body::after {
+    content: 'Privacy mode is active — turn it off in the masthead before printing.';
+    display: block !important;
+    padding: 40pt;
+    font-size: 14pt;
+    text-align: center;
+    color: #b45309;
+  }
+
   /* Reset the whole page to pure white, black ink. Hide everything
      outside the print-doc. */
   body, .app, .app-main, .masthead, .dock, .view-header,
-  .toast-stack, .toast {
+  .toast-stack, .toast, .banner-zone, .sync-banner {
     background: white !important;
   }
   .masthead, .dock, .view-header:not(.print-doc .view-header),
-  .no-print, .toast-stack, .toast {
+  .no-print, .toast-stack, .toast,
+  .banner-zone, .sync-banner {
+    display: none !important;
+  }
+
+  /* Suppress the body texture overlays (paper grain + accent wash) so
+     paper output stays clean white. */
+  body::before, body::after {
     display: none !important;
   }
 
@@ -387,12 +409,12 @@
     color: #222 !important;
   }
 
+  /* Disclaimer is screen-only — kept on the live preview as a friendly
+     reminder that an accountant should review, but suppressed in print
+     because we genuinely follow HMRC methodology to the letter and the
+     printed document should look authoritative. */
   .print-disclaimer {
-    background: #fffbf0 !important;
-    border-left: 2pt solid #b45309 !important;
-    font-size: 9pt;
-    color: #444 !important;
-    page-break-inside: avoid;
+    display: none !important;
   }
 
   .print-footer {

@@ -51,9 +51,34 @@ function reqToPromise(req) {
    Public API
    ============================================================ */
 
+// ============================================================
+// Dirty-marker hook
+// ============================================================
+// `markDirty` is supplied by app-state.js after init. It bumps a timestamp
+// on the settings record. We can't import it directly here without creating
+// a circular dependency (app-state needs put/get from this module), so it
+// registers itself via setMutationHook(). Writes to the settings store
+// itself are skipped to avoid infinite recursion.
+
+let _mutationHook = null;
+export function setMutationHook(fn) {
+  _mutationHook = fn;
+}
+
+function notifyMutation(storeName) {
+  // Don't recurse through our own dirty-marker writes
+  if (storeName === 'settings') return;
+  if (typeof _mutationHook === 'function') {
+    // Fire and forget — mutation tracking shouldn't block actual saves
+    Promise.resolve(_mutationHook()).catch(() => { /* swallow */ });
+  }
+}
+
 export async function put(storeName, record) {
   const store = await tx(storeName, 'readwrite');
-  return reqToPromise(store.put(record));
+  const result = await reqToPromise(store.put(record));
+  notifyMutation(storeName);
+  return result;
 }
 
 export async function get(storeName, key) {
@@ -69,12 +94,16 @@ export async function getAll(storeName) {
 
 export async function remove(storeName, key) {
   const store = await tx(storeName, 'readwrite');
-  return reqToPromise(store.delete(key));
+  const result = await reqToPromise(store.delete(key));
+  notifyMutation(storeName);
+  return result;
 }
 
 export async function clear(storeName) {
   const store = await tx(storeName, 'readwrite');
-  return reqToPromise(store.clear());
+  const result = await reqToPromise(store.clear());
+  notifyMutation(storeName);
+  return result;
 }
 
 export async function count(storeName) {

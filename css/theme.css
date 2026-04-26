@@ -114,9 +114,189 @@ body {
   min-height: 100dvh;
   padding-bottom: calc(64px + env(safe-area-inset-bottom));
   transition: background 0.2s ease, color 0.2s ease;
+  position: relative;
+}
+
+/* Subtle background texture — almost invisible noise that gives the page
+   a sense of paper rather than a flat colour field. Two layers:
+   1. body::before — a soft accent wash at the top of the viewport
+   2. body::after — a near-invisible noise pattern across the whole page
+   Both are pointer-events: none so they don't intercept clicks. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.4;
+  background-image:
+    radial-gradient(
+      ellipse 1200px 600px at 50% -10%,
+      var(--accent-wash) 0%,
+      transparent 60%
+    );
+}
+[data-theme="dark"] body::before {
+  opacity: 0.5;
+  background-image:
+    radial-gradient(
+      ellipse 1200px 700px at 50% -10%,
+      rgba(45, 212, 191, 0.04) 0%,
+      transparent 60%
+    );
+}
+
+/* Paper-grain noise. Tiny inline SVG with fractal turbulence. Sits at
+   ~3% opacity which is barely perceptible but adds genuine texture. */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  mix-blend-mode: multiply;
+}
+[data-theme="dark"] body::after {
+  opacity: 0.04;
+  mix-blend-mode: screen;
+}
+
+/* Make sure actual content sits above the texture layers */
+.masthead, .banner-zone, .app-main, .dock {
+  position: relative;
+  z-index: 1;
+}
+
+/* Page content needs to sit above the texture overlay */
+.masthead, .app-main, .dock, .sync-banner, .toast-stack {
+  position: relative;
+  z-index: 1;
 }
 
 .page-grain { display: none; }
+
+/* ============================================================
+   Sync banner — pulses when user has unsynced changes
+   ============================================================ */
+
+.sync-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-3) auto 0;
+  max-width: 1200px;
+  background: linear-gradient(
+    90deg,
+    rgba(180, 83, 9, 0.08) 0%,
+    rgba(180, 83, 9, 0.04) 100%
+  );
+  border: 1px solid var(--warn-soft, rgba(180, 83, 9, 0.25));
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-md);
+  font-size: var(--f-sm);
+  color: var(--text);
+}
+[data-theme="dark"] .sync-banner {
+  background: linear-gradient(
+    90deg,
+    rgba(245, 158, 11, 0.10) 0%,
+    rgba(245, 158, 11, 0.04) 100%
+  );
+}
+.sync-banner__icon {
+  color: var(--warn);
+  font-size: 1.25rem;
+  line-height: 1;
+  animation: sync-pulse 2s ease-in-out infinite;
+}
+.sync-banner__text {
+  flex: 1;
+  font-weight: 500;
+}
+.sync-banner__action {
+  background: var(--warn);
+  color: white;
+  border: 0;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-body);
+  font-size: var(--f-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s ease, transform 0.05s ease;
+}
+.sync-banner__action:hover { filter: brightness(1.1); }
+.sync-banner__action:active { transform: translateY(1px); }
+
+@keyframes sync-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.85); }
+}
+
+/* ============================================================
+   Privacy mode — blur all currency-style values
+   ============================================================ */
+
+/* When .is-privacy is on the html root, blur known value-bearing classes
+   without affecting layout. Selective targeting (rather than blurring
+   everything) keeps labels and structure readable so the user can still
+   navigate. */
+.is-privacy .stat-tile__value,
+.is-privacy .stat-tile__sub,
+.is-privacy .num,
+.is-privacy .stat-row__value,
+.is-privacy .pf-currency,
+.is-privacy .pf-quantity {
+  filter: blur(7px);
+  user-select: none;
+  transition: filter 0.2s ease;
+}
+.is-privacy .stat-tile__value:hover,
+.is-privacy .num:hover,
+.is-privacy .stat-row__value:hover {
+  filter: blur(2px);
+}
+
+/* Privacy notice in the masthead when active */
+.is-privacy #privacy-toggle {
+  color: var(--accent);
+  background: var(--accent-wash);
+}
+.is-privacy .privacy-eye-open { display: none; }
+.privacy-eye-closed { display: none; }
+.is-privacy .privacy-eye-closed { display: inline; }
+
+/* ============================================================
+   Masthead actions group + icon button
+   ============================================================ */
+
+.masthead__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.masthead-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.masthead-icon-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+  border-color: var(--border-strong);
+}
 
 h1, h2, h3, h4 {
   font-family: var(--font-display);

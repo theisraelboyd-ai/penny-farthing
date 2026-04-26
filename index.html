@@ -29,12 +29,28 @@
         <span class="masthead__ornament" aria-hidden="true"></span>
         <h1>Penny Farthing</h1>
       </div>
-      <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">
-        <span class="theme-toggle__icon" aria-hidden="true">☾</span>
-      </button>
+      <div class="masthead__actions">
+        <button id="privacy-toggle" class="masthead-icon-btn" type="button"
+                aria-label="Toggle privacy mode" aria-pressed="false"
+                title="Hide values">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none"
+               stroke="currentColor" stroke-width="2" stroke-linecap="round"
+               stroke-linejoin="round" aria-hidden="true">
+            <path class="privacy-eye-open" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle class="privacy-eye-open" cx="12" cy="12" r="3"/>
+            <path class="privacy-eye-closed" d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+            <line class="privacy-eye-closed" x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+        </button>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Toggle dark mode">
+          <span class="theme-toggle__icon" aria-hidden="true">☾</span>
+        </button>
+      </div>
     </div>
     <div class="masthead__rule" aria-hidden="true"></div>
   </header>
+
+  <div id="banner-zone" class="banner-zone"></div>
 
   <main id="app" class="app-main" role="main">
     <!-- Views render here -->
