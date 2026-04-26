@@ -421,6 +421,8 @@ function renderMethodologySection() {
       methodologyBlock('Seafarer\'s Earnings Deduction',
         'SED (ITEPA 2003 s.378) affects which CGT rate band applies by reducing taxable income. This summary shows CGT under both "SED succeeds" and "SED fails" scenarios; the user\'s declared status determines which figure is treated as primary.'),
     ),
+    el('p', { class: 'print-disclaimer' },
+      'This document is a computational summary generated from transaction data entered or imported by the user. It is not tax advice. Figures should be verified against broker statements and reviewed by a qualified accountant before submission to HMRC.'),
   );
 }
 

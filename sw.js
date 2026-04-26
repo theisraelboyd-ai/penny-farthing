@@ -3,7 +3,7 @@
  * On fetch, try cache first for shell files, network first for API calls.
  */
 
-const CACHE_NAME = 'penny-farthing-v25';
+const CACHE_NAME = 'penny-farthing-v19';
 const SHELL = [
   './',
   './index.html',

@@ -215,31 +215,6 @@ export async function renderHoldings(mount) {
     );
   }
 
-  // AEA (Annual Exempt Amount) headroom for the current tax year.
-  // Tells the user how much chargeable gain they can still realise in
-  // 2026-27 before CGT kicks in. Computed from year-to-date realised gains
-  // and any losses brought forward (auto-carry from prior tracked years).
-  // Floored at 0 — once you're over the line, headroom is just zero.
-  const ANNUAL_EXEMPT_AMOUNT = 3000;
-  const realisedNetThisYear = portfolio.byTaxYear[currentTaxYear]?.netGbp || 0;
-  const lossesBfStd = (portfolio.byTaxYear[currentTaxYear]?.lossesBfAutoStd || 0)
-    + (settings?.preTrackingSeedLosses || 0);
-  // Available "tax-free room" = AEA + bf losses; consumed by net realised
-  // gains so far this year. Negative realised (i.e. losses banked already)
-  // doesn't expand the room beyond the AEA — losses get added to the bf
-  // bank for *next* year, not this year's headroom.
-  const headroomRaw = ANNUAL_EXEMPT_AMOUNT + lossesBfStd - Math.max(0, realisedNetThisYear);
-  const aeaHeadroom = Math.max(0, headroomRaw);
-
-  let headroomSubtitle;
-  if (realisedNetThisYear > 0) {
-    headroomSubtitle = `${formatCurrency(realisedNetThisYear, 'GBP')} already realised`;
-  } else if (realisedNetThisYear < 0) {
-    headroomSubtitle = `${formatCurrency(Math.abs(realisedNetThisYear), 'GBP')} loss banked`;
-  } else {
-    headroomSubtitle = 'before CGT applies';
-  }
-
   // Summary strip
   mount.append(
     el('div', { class: 'stat-grid' },
@@ -255,10 +230,9 @@ export async function renderHoldings(mount) {
         null,
         priceCoverage === 0 ? null :
           (grandTotalMarket >= grandTotalCost ? 'gain' : 'loss')),
-      stat(`AEA headroom ${currentTaxYear}`,
-        formatCurrency(aeaHeadroom, 'GBP'),
-        headroomSubtitle,
-        aeaHeadroom > 0 ? 'gain' : 'warn'),
+      stat('If sold all now',
+        priceCoverage > 0 ? formatCurrency(grandTotalNetAfterTax, 'GBP') : '—',
+        'after tax (estimated)'),
     ),
   );
 
@@ -340,49 +314,27 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
             el('div', { class: `text-faint ${sn.tone}`, style: { fontSize: 'var(--f-xs)' } },
               (sn.hypotheticalGainGbp >= 0 ? '+' : '') + formatCurrency(sn.hypotheticalGainGbp, 'GBP')),
           );
-          // Stacked breakdown: Proceeds / [middle row] / Net.
-          // Same shape for all three cases — gain (taxable), loss banked,
-          // or AEA-exempt — so the user always knows what they'd receive,
-          // what tax/loss event happens, and what they'd take home.
-          let middleLabel, middleValue, middleClass, captionText;
-          if (sn.hypotheticalGainGbp < 0) {
-            // Loss — selling banks the loss for future offset, no tax.
-            middleLabel = 'Loss';
-            middleValue = `−${formatCurrency(Math.abs(sn.hypotheticalGainGbp), 'GBP')}`;
-            middleClass = 'loss';
-            captionText = 'banked for future offset';
-          } else if (sn.exempt) {
-            middleLabel = 'Tax';
-            middleValue = formatCurrency(0, 'GBP');
-            middleClass = '';
-            captionText = 'within AEA — exempt';
+          if (sn.exempt) {
+            sellNowCell = el('td', { class: 'num', style: { fontWeight: '500' } },
+              formatCurrency(sn.netInHandGbp, 'GBP'),
+              el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } }, 'tax exempt'),
+            );
+          } else if (sn.hypotheticalGainGbp < 0) {
+            sellNowCell = el('td', { class: 'num', style: { fontWeight: '500' } },
+              formatCurrency(sn.netInHandGbp, 'GBP'),
+              el('div', { class: 'text-faint loss', style: { fontSize: 'var(--f-xs)' } },
+                `banks £${Math.abs(sn.hypotheticalGainGbp).toFixed(0)} loss`),
+            );
           } else {
             const sedLabel = sn.sedStatus === 'claimed' ? 'after SED' :
                              sn.sedStatus === 'not-eligible' ? 'no SED' :
                              'SED pending';
-            middleLabel = 'Tax';
-            middleValue = `−${formatCurrency(sn.taxDueGbp, 'GBP')}`;
-            middleClass = 'warn';
-            captionText = sedLabel;
+            sellNowCell = el('td', { class: 'num', style: { fontWeight: '500' } },
+              formatCurrency(sn.netInHandGbp, 'GBP'),
+              el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
+                `£${sn.taxDueGbp.toFixed(0)} tax · ${sedLabel}`),
+            );
           }
-          sellNowCell = el('td', { class: 'num sell-now-breakdown' },
-            el('div', { class: 'sell-now-breakdown__row' },
-              el('span', { class: 'sell-now-breakdown__label' }, 'Proceeds'),
-              el('span', { class: 'sell-now-breakdown__value' },
-                formatCurrency(sn.marketValueGbp, 'GBP')),
-            ),
-            el('div', { class: 'sell-now-breakdown__row' },
-              el('span', { class: 'sell-now-breakdown__label' }, middleLabel),
-              el('span', { class: `sell-now-breakdown__value ${middleClass}` }, middleValue),
-            ),
-            el('div', { class: 'sell-now-breakdown__row sell-now-breakdown__row--net' },
-              el('span', { class: 'sell-now-breakdown__label' }, 'Net'),
-              el('span', { class: 'sell-now-breakdown__value' },
-                formatCurrency(sn.netInHandGbp, 'GBP')),
-            ),
-            el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)', textAlign: 'right', marginTop: '2px' } },
-              captionText),
-          );
         } else {
           marketCell = el('td', { class: 'num text-faint' }, '—');
           sellNowCell = el('td', { class: 'num text-faint' }, '—');
