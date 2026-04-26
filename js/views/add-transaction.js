@@ -11,6 +11,7 @@ import { getAll, put, uuid } from '../storage/indexeddb.js';
 import { ukTaxYear } from '../storage/schema.js';
 import { navigate } from '../router.js';
 import { createAssetPicker } from '../visual/asset-picker.js';
+import { getFxRate } from '../engine/fx.js';
 
 export async function renderAddTransaction(mount, params = {}) {
   const assets = await getAll('assets');
@@ -209,21 +210,57 @@ export async function renderAddTransaction(mount, params = {}) {
       const pricePerUnit = parseFloat(form.querySelector('#txn-price').value);
       const currency = form.querySelector('#txn-currency').value;
       const fxRateRaw = form.querySelector('#txn-fx').value;
-      const fxRate = parseFloat(fxRateRaw || '1');
       const fees = parseFloat(form.querySelector('#txn-fees').value || '0');
       const accountId = form.querySelector('#txn-account').value;
       const notes = form.querySelector('#txn-notes').value || '';
 
-      // Decide FX source:
-      //   - GBP/GBX: trivial, handled by the engine
-      //   - Foreign currency where user left the default of "1": mark auto,
-      //     Frankfurter will fetch on next portfolio render
-      //   - Foreign currency with a user-entered value != 1: mark manual,
-      //     never overwritten
-      let fxSource = 'trivial';
-      if (currency !== 'GBP' && currency !== 'GBX') {
+      // Determine the FX rate to store on the record. Three branches:
+      //
+      //   (1) GBP/GBX: trivial, fxRate=1 is correct and fxSource='trivial'
+      //
+      //   (2) Foreign currency, user entered a non-default rate (≠ 1):
+      //       respect it as a manual override. fxSource='manual'.
+      //
+      //   (3) Foreign currency, user left the default of "1":
+      //       fetch the historical Frankfurter rate INLINE for the
+      //       transaction's date. Store the fetched value as fxRate
+      //       and fxSource='frankfurter'.
+      //
+      // If branch (3) fails (no internet, Frankfurter outage, no rate
+      // within 7 days back), refuse to save with a clear error message
+      // so the user can enter a manual rate. This prevents the silent-
+      // default-to-1 bug that previously inflated GBP cost basis.
+      let fxRate;
+      let fxSource;
+      if (currency === 'GBP' || currency === 'GBX') {
+        fxRate = 1;
+        fxSource = 'trivial';
+      } else {
         const userTouchedRate = fxRateRaw !== '' && fxRateRaw !== '1' && parseFloat(fxRateRaw) !== 1;
-        fxSource = userTouchedRate ? 'manual' : 'auto';
+        if (userTouchedRate) {
+          fxRate = parseFloat(fxRateRaw);
+          fxSource = 'manual';
+        } else {
+          // Fetch live from Frankfurter. May take a moment.
+          submitBtn.textContent = 'Fetching FX rate…';
+          let fetched = null;
+          try {
+            fetched = await getFxRate(currency, date);
+          } catch (err) {
+            console.error('FX fetch error:', err);
+          }
+          if (fetched === null || typeof fetched !== 'number' || !Number.isFinite(fetched) || fetched <= 0) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Save';
+            toast(
+              `Could not fetch ${currency}→GBP rate for ${date}. Enter the rate manually (try your broker statement or xe.com) and save again.`,
+              { error: true, duration: 6000 }
+            );
+            return;
+          }
+          fxRate = fetched;
+          fxSource = 'frankfurter';
+        }
       }
 
       // Preserve ID and createdAt when editing
@@ -237,9 +274,7 @@ export async function renderAddTransaction(mount, params = {}) {
         pricePerUnit,
         currency,
         fxRate,
-        fxSource: editing && editing.fxSource === 'manual' && fxRate === editing.fxRate
-          ? 'manual'  // preserve manual-rate marker if user didn't touch it
-          : fxSource,
+        fxSource,
         fees,
         taxYear: ukTaxYear(date),
         notes,
