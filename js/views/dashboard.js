@@ -79,13 +79,16 @@ export async function renderDashboard(mount) {
     }
   }
 
+  // The root view-header is always rendered. The backup-freshness banner
+  // is conditional — it's null when no reminder is needed, and we mustn't
+  // pass null to mount.append() because the native DOM method renders it
+  // as the string "null" (unlike the el() helper which filters nulls).
   mount.append(
     el('div', { class: 'view-header' },
       el('h2', {}, 'Dashboard'),
       el('p', {}, 'Portfolio summary and holdings overview.'),
     ),
-    backupBanner,
-
+    ...(backupBanner ? [backupBanner] : []),
     el('div', { class: 'stat-grid' },
       statTile('Holdings cost basis',
         formatCurrency(totalCostBasis, 'GBP'),
@@ -171,7 +174,7 @@ export async function renderDashboard(mount) {
             ...topHoldings.map((h) => {
               const g = glyphFor(h.asset.type);
               return el('tr', {},
-                el('td', {},
+                el('td', { 'data-label': 'Asset' },
                   el('div', { style: { display: 'flex', alignItems: 'center' } },
                     el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
                     el('div', {},
@@ -181,9 +184,9 @@ export async function renderDashboard(mount) {
                     ),
                   ),
                 ),
-                el('td', {}, el('span', { class: 'pill' }, h.account.wrapper || '—')),
-                el('td', { class: 'num' }, formatNumber(h.quantity, 4)),
-                el('td', { class: 'num' }, formatCurrency(h.costGbp, 'GBP')),
+                el('td', { 'data-label': 'Account' }, el('span', { class: 'pill' }, h.account.wrapper || '—')),
+                el('td', { class: 'num', 'data-label': 'Quantity' }, formatNumber(h.quantity, 4)),
+                el('td', { class: 'num', 'data-label': 'Cost (GBP)' }, formatCurrency(h.costGbp, 'GBP')),
               );
             }),
           ),
@@ -215,10 +218,10 @@ export async function renderDashboard(mount) {
             ...recent.map((d) => {
               const isGain = d.gainGbp >= 0;
               return el('tr', {},
-                el('td', {}, d.date),
-                el('td', {}, d.assetTicker),
-                el('td', { class: 'num' }, formatCurrency(d.proceedsNetGbp, 'GBP')),
-                el('td', { class: `num ${isGain ? 'gain' : 'loss'}` },
+                el('td', { 'data-label': 'Date' }, d.date),
+                el('td', { 'data-label': 'Asset' }, d.assetTicker),
+                el('td', { class: 'num', 'data-label': 'Proceeds' }, formatCurrency(d.proceedsNetGbp, 'GBP')),
+                el('td', { class: `num ${isGain ? 'gain' : 'loss'}`, 'data-label': 'Gain / Loss' },
                   (isGain ? '+' : '') + formatCurrency(d.gainGbp, 'GBP')),
               );
             }),

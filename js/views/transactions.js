@@ -154,11 +154,11 @@ function renderRow(t, assetMap, accountMap, onChange) {
   const g = glyphFor(asset?.type);
 
   return el('tr', { class: `txn-row--${t.type}` },
-    el('td', {}, formatDate(t.date)),
-    el('td', {},
+    el('td', { 'data-label': 'Date' }, formatDate(t.date)),
+    el('td', { 'data-label': 'Type' },
       el('span', { class: `pill ${style.pillClass}` }, style.label),
     ),
-    el('td', {},
+    el('td', { 'data-label': 'Asset' },
       el('div', { style: { display: 'flex', alignItems: 'center' } },
         el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
         el('div', {},
@@ -168,15 +168,15 @@ function renderRow(t, assetMap, accountMap, onChange) {
         ),
       ),
     ),
-    el('td', { class: 'num' }, formatNumber(t.quantity, 6)),
-    el('td', { class: 'num' },
+    el('td', { class: 'num', 'data-label': 'Quantity' }, formatNumber(t.quantity, 6)),
+    el('td', { class: 'num', 'data-label': 'Value (GBP)' },
       formatCurrency(grossGbp, 'GBP'),
       needsFxIndicator
         ? el('div', { class: 'text-faint', style: { fontSize: '0.7rem' } },
             `${formatNumber(gross, 2)} ${t.currency} · ${fxLabel}`)
         : null,
     ),
-    el('td', { style: { textAlign: 'right', whiteSpace: 'nowrap' } },
+    el('td', { 'data-label': '', style: { textAlign: 'right', whiteSpace: 'nowrap' } },
       el('button', {
         class: 'button button--ghost button-sm',
         style: { marginRight: 'var(--space-1)' },

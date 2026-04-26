@@ -309,15 +309,15 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
         let priceCell;
         if (p && typeof p.priceNative === 'number' && p.priceNative > 0) {
           const isManual = p.source === 'manual' || p.manualOverride;
-          priceCell = el('td', { class: 'num' },
+          priceCell = el('td', { class: 'num', 'data-label': 'Price' },
             formatNumber(p.priceNative, 4),
             el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
               `${p.currency || nativeCurrency} · ${isManual ? 'manual' : 'live'}`),
           );
         } else if (p && p.error) {
-          priceCell = el('td', { class: 'num text-faint' }, 'fetch failed');
+          priceCell = el('td', { class: 'num text-faint', 'data-label': 'Price' }, 'fetch failed');
         } else {
-          priceCell = el('td', { class: 'num text-faint' }, '—');
+          priceCell = el('td', { class: 'num text-faint', 'data-label': 'Price' }, '—');
         }
 
         // Market value + sell-now cells
@@ -325,17 +325,17 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
         let sellNowCell;
         if (sn && sn.fxFailed) {
           // FX fetch failed — show amber warning with actionable fix.
-          marketCell = el('td', { class: 'num' },
+          marketCell = el('td', { class: 'num', 'data-label': 'Market value' },
             el('span', { class: 'pill pill--warn' }, 'FX unavailable'),
             el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)', marginTop: '2px' } },
               `${p?.currency || nativeCurrency}→GBP not fetched`),
           );
-          sellNowCell = el('td', { class: 'num text-faint' },
+          sellNowCell = el('td', { class: 'num text-faint', 'data-label': 'If sold now' },
             '—',
             el('div', { style: { fontSize: 'var(--f-xs)' } }, 'set price manually'),
           );
         } else if (sn) {
-          marketCell = el('td', { class: 'num' },
+          marketCell = el('td', { class: 'num', 'data-label': 'Market value' },
             formatCurrency(sn.marketValueGbp, 'GBP'),
             el('div', { class: `text-faint ${sn.tone}`, style: { fontSize: 'var(--f-xs)' } },
               (sn.hypotheticalGainGbp >= 0 ? '+' : '') + formatCurrency(sn.hypotheticalGainGbp, 'GBP')),
@@ -365,7 +365,7 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
             middleClass = 'warn';
             captionText = sedLabel;
           }
-          sellNowCell = el('td', { class: 'num sell-now-breakdown' },
+          sellNowCell = el('td', { class: 'num sell-now-breakdown', 'data-label': 'If sold now' },
             el('div', { class: 'sell-now-breakdown__row' },
               el('span', { class: 'sell-now-breakdown__label' }, 'Proceeds'),
               el('span', { class: 'sell-now-breakdown__value' },
@@ -384,12 +384,12 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
               captionText),
           );
         } else {
-          marketCell = el('td', { class: 'num text-faint' }, '—');
-          sellNowCell = el('td', { class: 'num text-faint' }, '—');
+          marketCell = el('td', { class: 'num text-faint', 'data-label': 'Market value' }, '—');
+          sellNowCell = el('td', { class: 'num text-faint', 'data-label': 'If sold now' }, '—');
         }
 
         return el('tr', {},
-          el('td', {},
+          el('td', { 'data-label': 'Asset' },
             el('div', { style: { display: 'flex', alignItems: 'center' } },
               el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
               el('div', {},
@@ -399,12 +399,12 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
               ),
             ),
           ),
-          el('td', { class: 'num' }, formatNumber(h.quantity, 4)),
-          el('td', { class: 'num' }, formatCurrency(h.costGbp, 'GBP')),
+          el('td', { class: 'num', 'data-label': 'Quantity' }, formatNumber(h.quantity, 4)),
+          el('td', { class: 'num', 'data-label': 'Cost (GBP)' }, formatCurrency(h.costGbp, 'GBP')),
           priceCell,
           marketCell,
           sellNowCell,
-          el('td', { style: { textAlign: 'right' } },
+          el('td', { 'data-label': '', style: { textAlign: 'right' } },
             el('button', {
               class: 'button button--ghost button-sm',
               onclick: async () => {

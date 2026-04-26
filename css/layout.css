@@ -701,6 +701,102 @@
 }
 .empty-state p { color: var(--text-muted); }
 
+/* ============================================================
+   Mobile re-flow: tables → cards under 720px.
+
+   Desktop renders standard tables with column headers across the top.
+   On mobile, that doesn't fit — too many columns, horizontal scroll,
+   bad UX. So we override the table elements at narrow widths to render
+   each <tr> as a card with each <td> as a labelled row INSIDE the card.
+
+   The trick: every <td> has a data-label="..." attribute that supplies
+   what would normally be the column header. On mobile we hide the
+   <thead>, set everything to display:block, and use ::before to render
+   the data-label on each cell.
+   ============================================================ */
+
+@media (max-width: 719px) {
+  .hairline-table thead {
+    display: none;
+  }
+  .hairline-table,
+  .hairline-table tbody,
+  .hairline-table tr,
+  .hairline-table td {
+    display: block;
+    width: 100%;
+  }
+  .hairline-table tbody tr {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-3);
+    padding: var(--space-3);
+    background: var(--surface);
+  }
+  /* Don't double up zebra-striping on cards */
+  .hairline-table tbody tr:nth-child(even) {
+    background: var(--surface);
+  }
+  [data-theme="dark"] .hairline-table tbody tr:nth-child(even) {
+    background: var(--surface);
+  }
+  .hairline-table tbody tr:hover {
+    background: var(--surface);
+  }
+  .hairline-table tbody td {
+    border-bottom: none;
+    padding: var(--space-1) 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: var(--space-3);
+    text-align: right;
+  }
+  .hairline-table tbody td::before {
+    content: attr(data-label);
+    font-family: var(--font-body);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    flex-shrink: 0;
+    text-align: left;
+  }
+  /* Empty data-label = no pseudo-element (e.g. action buttons row) */
+  .hairline-table tbody td[data-label=""]::before {
+    display: none;
+  }
+  /* Asset cell: full-width header on top, no label */
+  .hairline-table tbody td[data-label="Asset"] {
+    display: block;
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+  }
+  .hairline-table tbody td[data-label="Asset"]::before {
+    display: none;
+  }
+  /* sell-now-breakdown: keep it block-level, label above */
+  .hairline-table tbody td.sell-now-breakdown {
+    display: block;
+    text-align: left;
+    margin-top: var(--space-2);
+    padding-top: var(--space-2);
+    border-top: 1px solid var(--border);
+  }
+  .hairline-table tbody td.sell-now-breakdown::before {
+    display: block;
+    margin-bottom: var(--space-2);
+  }
+
+  /* Settings: collapse 2-column field grids to single column */
+  .form-row {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 @media (min-width: 720px) {
   .app-main { padding: var(--space-5); }
   .ledger-page { padding: var(--space-5) var(--space-6); }

@@ -266,7 +266,10 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   z-index: 2;
   max-width: 1200px;
   margin: 0 auto;
-  padding: var(--space-5) var(--space-4);
+  /* Bottom padding clears the fixed dock so the last items in any view
+     can scroll into view above it. The dock is ~56px tall + safe-area
+     inset for iPhone home-indicator. Generous space-7 for comfort. */
+  padding: var(--space-5) var(--space-4) calc(var(--space-7) + env(safe-area-inset-bottom));
 }
 
 .loading {
