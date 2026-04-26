@@ -114,6 +114,17 @@ function renderTable(txns, assetMap, accountMap, filter, onChange) {
     );
   }
 
+  // Mobile: card layout. Desktop: table.
+  const isMobile = typeof window !== 'undefined'
+    && window.matchMedia
+    && window.matchMedia('(max-width: 719px)').matches;
+
+  if (isMobile) {
+    return el('div', { class: 'txn-cards' },
+      ...filtered.map((t) => renderCard(t, assetMap, accountMap, onChange)),
+    );
+  }
+
   return el('table', { class: 'hairline-table' },
     el('thead', {},
       el('tr', {},
@@ -127,6 +138,92 @@ function renderTable(txns, assetMap, accountMap, filter, onChange) {
     ),
     el('tbody', {},
       ...filtered.map((t) => renderRow(t, assetMap, accountMap, onChange)),
+    ),
+  );
+}
+
+function renderCard(t, assetMap, accountMap, onChange) {
+  const asset = assetMap.get(t.assetId);
+  const account = accountMap.get(t.accountId);
+  const style = txnStyle(t.type);
+  const gross = (t.quantity || 0) * (t.pricePerUnit || 0);
+  const gbpFx = t.currency === 'GBX' ? (t.fxRate || 1) * 0.01 : (t.fxRate || 1);
+  const grossGbp = gross * gbpFx;
+  const needsFxIndicator = t.currency !== 'GBP' && t.currency !== 'GBX';
+  const fxSource = t.fxSource || 'unset';
+  const fxLabel = needsFxIndicator
+    ? (fxSource === 'manual' ? 'fx manual' :
+       fxSource === 'auto'   ? 'fx auto' :
+                               `fx ${fxSource}`)
+    : null;
+  const g = glyphFor(asset?.type);
+
+  return el('div', { class: `txn-card txn-card--${t.type}` },
+    // Header: glyph + ticker + account, type pill on right
+    el('div', { class: 'txn-card__header' },
+      el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
+      el('div', { class: 'txn-card__title' },
+        el('div', { class: 'txn-card__ticker' }, asset ? (asset.ticker || '?') : '?'),
+        el('div', { class: 'txn-card__sub' },
+          account ? `${account.name} · ${account.wrapper}` : ''),
+      ),
+      el('span', { class: `pill ${style.pillClass}` }, style.label),
+    ),
+
+    // Body: date, qty, value
+    el('div', { class: 'txn-card__body' },
+      el('div', { class: 'txn-card__row' },
+        el('span', { class: 'text-faint' }, 'Date'),
+        el('span', {}, formatDate(t.date)),
+      ),
+      el('div', { class: 'txn-card__row' },
+        el('span', { class: 'text-faint' }, 'Quantity'),
+        el('span', { class: 'txn-card__value' }, formatNumber(t.quantity, 6)),
+      ),
+      el('div', { class: 'txn-card__row' },
+        el('span', { class: 'text-faint' }, 'Value'),
+        el('div', { style: { textAlign: 'right' } },
+          el('div', { class: 'txn-card__value' }, formatCurrency(grossGbp, 'GBP')),
+          needsFxIndicator
+            ? el('div', { class: 'text-faint', style: { fontSize: '0.7rem' } },
+                `${formatNumber(gross, 2)} ${t.currency} · ${fxLabel}`)
+            : null,
+        ),
+      ),
+    ),
+
+    // Footer: edit + remove buttons
+    el('div', { class: 'txn-card__action' },
+      el('button', {
+        class: 'button button--ghost button-sm',
+        onclick: () => {
+          const editUrl = t.pairId
+            ? `/closed?edit=${encodeURIComponent(t.id)}`
+            : `/add?edit=${encodeURIComponent(t.id)}`;
+          navigate(editUrl);
+        },
+      }, 'Edit'),
+      el('button', {
+        class: 'button button--ghost button-sm',
+        onclick: async () => {
+          if (t.pairId) {
+            const choice = confirm(
+              'This transaction is part of a matched pair (buy + sell).\n\n' +
+              'OK to delete BOTH halves together (recommended).\n' +
+              'Cancel to skip and keep both.'
+            );
+            if (!choice) return;
+            await remove('transactions', t.id);
+            await remove('transactions', t.pairId);
+            toast('Pair removed');
+          } else {
+            if (!confirm('Delete this transaction? This cannot be undone.')) return;
+            await remove('transactions', t.id);
+            toast('Transaction removed');
+          }
+          if (onChange) onChange();
+        },
+      }, 'Remove'),
     ),
   );
 }

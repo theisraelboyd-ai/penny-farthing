@@ -270,19 +270,207 @@ export async function renderHoldings(mount) {
 
   for (const wrapper of sortedWrappers) {
     const holdings = byWrapper[wrapper];
+    const renderer = isMobile() ? renderHoldingsCards : renderHoldingsTable;
     const card = el('section', { class: 'ledger-page' },
       el('div', { class: 'ledger-page__heading' },
         el('h2', {}, wrapper),
         el('span', { class: 'pill' },
           formatCurrency(totalsByWrapper[wrapper], 'GBP') + ' cost'),
       ),
-      renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, async () => {
+      renderer(holdings, priceMap, sellNowResults, apiKey, async () => {
         mount.innerHTML = '';
         await renderHoldings(mount);
       }),
     );
     mount.append(card);
   }
+}
+
+/**
+ * Detect mobile viewport. Used to swap between the desktop table layout
+ * and a custom card layout that groups data semantically (qty+cost together,
+ * price+market+delta together, sell-now intact). Re-evaluated on each render
+ * via the resize-aware re-render in renderHoldings (top of view).
+ */
+function isMobile() {
+  return typeof window !== 'undefined'
+    && window.matchMedia
+    && window.matchMedia('(max-width: 719px)').matches;
+}
+
+/**
+ * Compute the per-row presentational data once and share between table
+ * and card renderers. Avoids duplicating the price/sell-now/breakdown
+ * branching across two functions.
+ */
+function buildHoldingPresentation(h, p, sn) {
+  const nativeCurrency = h.asset.baseCurrency || 'GBP';
+  const presentation = {
+    h,
+    nativeCurrency,
+    glyph: glyphFor(h.asset.type),
+    // Price piece
+    priceText: null,
+    priceMeta: null,
+    priceFailed: false,
+    // Market piece
+    marketText: null,
+    marketDeltaText: null,
+    marketDeltaTone: null,
+    fxFailed: false,
+    // Sell-now breakdown — three-row stacked structure
+    breakdown: null,
+  };
+
+  if (p && typeof p.priceNative === 'number' && p.priceNative > 0) {
+    const isManual = p.source === 'manual' || p.manualOverride;
+    presentation.priceText = formatNumber(p.priceNative, 4);
+    presentation.priceMeta = `${p.currency || nativeCurrency} · ${isManual ? 'manual' : 'live'}`;
+  } else if (p && p.error) {
+    presentation.priceFailed = true;
+  }
+
+  if (sn && sn.fxFailed) {
+    presentation.fxFailed = true;
+  } else if (sn) {
+    presentation.marketText = formatCurrency(sn.marketValueGbp, 'GBP');
+    presentation.marketDeltaText =
+      (sn.hypotheticalGainGbp >= 0 ? '+' : '') + formatCurrency(sn.hypotheticalGainGbp, 'GBP');
+    presentation.marketDeltaTone = sn.tone;
+
+    let middleLabel, middleValue, middleClass, captionText;
+    if (sn.hypotheticalGainGbp < 0) {
+      middleLabel = 'Loss';
+      middleValue = `−${formatCurrency(Math.abs(sn.hypotheticalGainGbp), 'GBP')}`;
+      middleClass = 'loss';
+      captionText = 'banked for future offset';
+    } else if (sn.exempt) {
+      middleLabel = 'Tax';
+      middleValue = formatCurrency(0, 'GBP');
+      middleClass = '';
+      captionText = 'within AEA — exempt';
+    } else {
+      const sedLabel = sn.sedStatus === 'claimed' ? 'after SED' :
+                       sn.sedStatus === 'not-eligible' ? 'no SED' :
+                       'SED pending';
+      middleLabel = 'Tax';
+      middleValue = `−${formatCurrency(sn.taxDueGbp, 'GBP')}`;
+      middleClass = 'warn';
+      captionText = sedLabel;
+    }
+    presentation.breakdown = {
+      proceeds: formatCurrency(sn.marketValueGbp, 'GBP'),
+      middleLabel, middleValue, middleClass,
+      net: formatCurrency(sn.netInHandGbp, 'GBP'),
+      caption: captionText,
+    };
+  }
+
+  return presentation;
+}
+
+/**
+ * Mobile card layout — three semantic groups per holding:
+ *   1. Header: glyph + ticker + name + account
+ *   2. Position: quantity + cost
+ *   3. Pricing: price + market value + delta
+ *   4. If sold now: stacked breakdown (proceeds / tax-or-loss / net)
+ *   5. Action: Set price button
+ *
+ * Each group has subtle visual separation. No table semantics. Designed
+ * for thumb scrolling on a phone screen.
+ */
+function renderHoldingsCards(holdings, priceMap, sellNowResults, apiKey, onChange) {
+  const list = el('div', { class: 'holdings-cards' });
+  for (const h of holdings) {
+    const p = priceMap.get(h.asset.id);
+    const sn = sellNowResults.get(h.asset.id);
+    const v = buildHoldingPresentation(h, p, sn);
+    const g = v.glyph;
+
+    const card = el('div', { class: 'holding-card' },
+      // Group 1 — header
+      el('div', { class: 'holding-card__header' },
+        el('span', { class: `asset-glyph asset-glyph--${g.tone}`, title: g.label }, g.glyph),
+        el('div', { class: 'holding-card__title' },
+          el('div', { class: 'holding-card__ticker' }, h.asset.ticker || '—'),
+          el('div', { class: 'holding-card__sub' },
+            `${h.asset.name || ''} · ${h.account.name}`),
+        ),
+      ),
+
+      // Group 2 — position (qty + cost paired)
+      el('div', { class: 'holding-card__group' },
+        el('div', { class: 'holding-card__group-label' }, 'Position'),
+        el('div', { class: 'holding-card__row' },
+          el('span', {}, `${formatNumber(h.quantity, 4)} units`),
+          el('span', { class: 'holding-card__value' },
+            formatCurrency(h.costGbp, 'GBP') + ' cost'),
+        ),
+      ),
+
+      // Group 3 — pricing (price native + market value + delta together)
+      el('div', { class: 'holding-card__group' },
+        el('div', { class: 'holding-card__group-label' }, 'Pricing'),
+        v.priceFailed
+          ? el('div', { class: 'holding-card__row' },
+              el('span', { class: 'text-faint' }, 'Price'),
+              el('span', { class: 'text-faint' }, 'fetch failed'))
+          : v.priceText
+            ? el('div', { class: 'holding-card__row' },
+                el('span', { class: 'text-faint' }, `Price (${v.priceMeta})`),
+                el('span', { class: 'holding-card__value' }, v.priceText))
+            : el('div', { class: 'holding-card__row' },
+                el('span', { class: 'text-faint' }, 'Price'),
+                el('span', { class: 'text-faint' }, '—')),
+        v.fxFailed
+          ? el('div', { class: 'holding-card__row' },
+              el('span', { class: 'text-faint' }, 'Market value'),
+              el('span', { class: 'pill pill--warn' }, 'FX unavailable'))
+          : v.marketText
+            ? el('div', { class: 'holding-card__row' },
+                el('span', { class: 'text-faint' }, 'Market value'),
+                el('span', { class: 'holding-card__value' },
+                  v.marketText,
+                  el('span', { class: `holding-card__delta ${v.marketDeltaTone}` },
+                    ' ' + v.marketDeltaText)))
+            : el('div', { class: 'holding-card__row' },
+                el('span', { class: 'text-faint' }, 'Market value'),
+                el('span', { class: 'text-faint' }, '—')),
+      ),
+
+      // Group 4 — if sold now (only when we have valid breakdown data)
+      v.breakdown
+        ? el('div', { class: 'holding-card__group holding-card__group--sellnow' },
+            el('div', { class: 'holding-card__group-label' }, 'If sold now'),
+            el('div', { class: 'sell-now-breakdown' },
+              el('div', { class: 'sell-now-breakdown__row' },
+                el('span', { class: 'sell-now-breakdown__label' }, 'Proceeds'),
+                el('span', { class: 'sell-now-breakdown__value' }, v.breakdown.proceeds)),
+              el('div', { class: 'sell-now-breakdown__row' },
+                el('span', { class: 'sell-now-breakdown__label' }, v.breakdown.middleLabel),
+                el('span', { class: `sell-now-breakdown__value ${v.breakdown.middleClass}` },
+                  v.breakdown.middleValue)),
+              el('div', { class: 'sell-now-breakdown__row sell-now-breakdown__row--net' },
+                el('span', { class: 'sell-now-breakdown__label' }, 'Net'),
+                el('span', { class: 'sell-now-breakdown__value' }, v.breakdown.net)),
+              el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)', textAlign: 'right', marginTop: '4px' } },
+                v.breakdown.caption),
+            ),
+          )
+        : null,
+
+      // Group 5 — action
+      el('div', { class: 'holding-card__action' },
+        el('button', {
+          class: 'button button--ghost button-sm',
+          onclick: async () => { await promptManualPrice(h, onChange); },
+        }, 'Set price'),
+      ),
+    );
+    list.append(card);
+  }
+  return list;
 }
 
 function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChange) {

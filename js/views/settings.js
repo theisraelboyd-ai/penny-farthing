@@ -245,10 +245,10 @@ async function renderAccountsSection() {
         )),
         el('tbody', {},
           ...accounts.map((a) => el('tr', {},
-            el('td', {}, a.name),
-            el('td', { class: 'text-faint' }, a.platform),
-            el('td', {}, el('span', { class: 'pill' }, a.wrapper)),
-            el('td', { style: { textAlign: 'right' } },
+            el('td', { 'data-label': 'Asset' }, a.name),
+            el('td', { class: 'text-faint', 'data-label': 'Platform' }, a.platform),
+            el('td', { 'data-label': 'Wrapper' }, el('span', { class: 'pill' }, a.wrapper)),
+            el('td', { 'data-label': '', style: { textAlign: 'right' } },
               el('button', {
                 class: 'button button--ghost button-sm',
                 onclick: async () => {

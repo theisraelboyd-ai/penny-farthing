@@ -716,6 +716,14 @@
    ============================================================ */
 
 @media (max-width: 719px) {
+  /* On mobile, ledger-page wrappers around cards need less internal padding
+     so cards have room to breathe. Cards have their own padding. */
+  .ledger-page {
+    padding: var(--space-3);
+  }
+  .view-header {
+    padding: 0 var(--space-1);
+  }
   .hairline-table thead {
     display: none;
   }
@@ -795,6 +803,12 @@
   .form-row {
     grid-template-columns: 1fr !important;
   }
+  /* Settings action buttons stack full-width on mobile so each action
+     is a clear primary tap target. .button-sm (used in table rows) and
+     scenario chips stay inline. */
+  .ledger-page .button-row > .button:not(.button-sm) {
+    flex: 1 1 100%;
+  }
 }
 
 @media (min-width: 720px) {
@@ -834,3 +848,170 @@
 }
 .sell-now-breakdown__value.warn { color: var(--warn); }
 .sell-now-breakdown__value.loss { color: var(--loss); }
+
+/* ============================================================
+   Holdings cards — mobile-only layout that replaces the table
+   under 720px. Each card is self-contained with semantic groups:
+   header (asset identity), position (qty + cost), pricing
+   (native price + market value), if-sold-now (full breakdown),
+   action (set-price button).
+
+   Styling stays loaded on desktop too but unused — the renderer
+   chooses which to invoke based on viewport.
+   ============================================================ */
+
+.holdings-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.holding-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.holding-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--border);
+}
+.holding-card__title {
+  flex: 1;
+  min-width: 0;
+}
+.holding-card__ticker {
+  font-weight: 600;
+  font-size: var(--f-md);
+  color: var(--text);
+}
+.holding-card__sub {
+  font-size: var(--f-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.holding-card__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.holding-card__group-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+.holding-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--f-sm);
+  color: var(--text);
+}
+.holding-card__row .text-faint { color: var(--text-muted); }
+.holding-card__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+  text-align: right;
+}
+.holding-card__delta {
+  font-family: var(--font-mono);
+  font-size: var(--f-xs);
+  font-weight: 400;
+}
+.holding-card__delta.gain { color: var(--gain); }
+.holding-card__delta.loss { color: var(--loss); }
+
+.holding-card__group--sellnow {
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3);
+  margin: 0 calc(-1 * var(--space-2));
+}
+
+.holding-card__action {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ============================================================
+   Transaction cards — mobile layout for the Activity feed.
+   Same pattern as holding cards: header with asset identity +
+   type pill, body with date/qty/value rows, footer with actions.
+   ============================================================ */
+
+.txn-cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.txn-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.txn-card__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border);
+}
+.txn-card__title {
+  flex: 1;
+  min-width: 0;
+}
+.txn-card__ticker {
+  font-weight: 600;
+  font-size: var(--f-md);
+  color: var(--text);
+}
+.txn-card__sub {
+  font-size: var(--f-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.txn-card__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+.txn-card__row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: var(--f-sm);
+}
+.txn-card__row .text-faint { color: var(--text-muted); }
+.txn-card__value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 500;
+}
+.txn-card__action {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-2);
+}
