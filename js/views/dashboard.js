@@ -51,6 +51,13 @@ export async function renderDashboard(mount) {
     .reverse();
   const recentClosedYear = closedYearsWithData[0] || null;
   const recentClosedData = recentClosedYear ? portfolio.byTaxYear[recentClosedYear] : null;
+  // Whether the user has marked the most recent closed year as filed with
+  // HMRC. Used in two places below: to update the year's tile subtitle and
+  // to suppress the SA-prompt banner once paperwork is done.
+  const recentClosedYearSettings = recentClosedYear
+    ? await get('taxYears', recentClosedYear)
+    : null;
+  const recentClosedFiled = !!recentClosedYearSettings?.lossesReported;
 
   // Backup freshness — soft prompt at 7+ days, prominent at 30+ days. Uses
   // the timestamp written by the backup section in Settings. Read here so
@@ -110,7 +117,7 @@ export async function renderDashboard(mount) {
       recentClosedData
         ? statTile(`Net realised ${recentClosedYear}`,
             formatCurrency(recentClosedData.netGbp, 'GBP'),
-            'closed year — for Self Assessment',
+            recentClosedFiled ? '✓ filed with HMRC' : 'closed year — for Self Assessment',
             recentClosedData.netGbp >= 0 ? 'gain' : 'loss')
         : null,
     ),
@@ -119,7 +126,9 @@ export async function renderDashboard(mount) {
   // If we have a closed year with reportable activity, offer a direct
   // action to generate the SA108 summary — visible on Dashboard so it's
   // impossible to miss when Self Assessment season comes around.
-  if (recentClosedData && recentClosedData.disposals.length > 0) {
+  // Hidden once the user marks `lossesReported = true` on the year (Tax
+  // view), since the banner's purpose is to nag until filed.
+  if (recentClosedData && recentClosedData.disposals.length > 0 && !recentClosedFiled) {
     mount.append(
       el('div', {
         style: {

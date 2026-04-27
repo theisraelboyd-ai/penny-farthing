@@ -546,6 +546,17 @@
 .pill--gain { color: var(--gain); border-color: transparent; background: var(--gain-soft); }
 .pill--loss { color: var(--loss); border-color: transparent; background: var(--loss-soft); }
 
+/* Filed-with-HMRC stamp pill — solid filled green to read clearly as a
+   "completed" badge against any page background. Used on Tax-view year
+   cards once the user has marked Self Assessment as filed for the year. */
+.pill--filed {
+  color: #fff;
+  background: var(--gain);
+  border-color: var(--gain);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
 /* Transaction-type pills — distinct by colour family, not by gain/loss semantics */
 .pill--buy {
   color: var(--accent);

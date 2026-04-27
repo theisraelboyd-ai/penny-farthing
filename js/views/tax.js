@@ -231,7 +231,7 @@ function renderYearCard(year, data, settings, isCurrent, opts = {}) {
   const isFiled = !!settings?.lossesReported;
 
   const filedBadge = isFiled
-    ? el('span', { class: 'pill pill--gain', title: 'Marked as filed with HMRC in Settings' }, '✓ Filed')
+    ? el('span', { class: 'pill pill--filed', title: 'Marked as filed with HMRC in Settings' }, '✓ Filed')
     : null;
 
   const header = el('div', { class: 'ledger-page__heading' },
