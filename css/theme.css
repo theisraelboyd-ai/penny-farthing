@@ -290,7 +290,7 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
   right: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   background: var(--surface);
   border-top: 1px solid var(--border);
   padding-bottom: env(safe-area-inset-bottom);
@@ -335,6 +335,12 @@ a:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 .dock__icon { font-size: 1.125rem; margin-bottom: 2px; }
 .dock__label { font-size: 0.6875rem; font-weight: 500; }
+/* On very narrow phones (under 380px), 6 dock items get tight.
+   Drop label size slightly so labels don't truncate. */
+@media (max-width: 379px) {
+  .dock__label { font-size: 0.625rem; }
+  .dock__item { padding: var(--space-2) 2px; }
+}
 
 /* ============================================================
    Toast

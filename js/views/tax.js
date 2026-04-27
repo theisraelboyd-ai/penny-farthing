@@ -15,9 +15,9 @@
  * informationally.
  */
 
-import { el, formatCurrency, formatDate } from '../ui.js';
+import { el, formatCurrency, formatDate, toast } from '../ui.js';
 import { computePortfolio } from '../engine/portfolio.js';
-import { get } from '../storage/indexeddb.js';
+import { get, put } from '../storage/indexeddb.js';
 import { ukTaxYear } from '../storage/schema.js';
 
 // HMRC CGT constants for tax years 2024-25 onward
@@ -74,6 +74,103 @@ export async function renderTax(mount) {
       isEarliestYear: year === yearsWithData[yearsWithData.length - 1],
     }));
   }
+
+  // Per-year SED management section. Lives at the bottom of Tax view so
+  // the data summary is the primary focus; management of SED status and
+  // "filed with HMRC" flags is the secondary action below.
+  mount.append(await renderSedManagementSection(yearsWithData, yearSettings));
+}
+
+/**
+ * Per-year SED override management. Lets the user set SED claim status and
+ * mark "losses reported to HMRC" for each tax year that has data. Saving a
+ * year as filed triggers a reload so all downstream views (tax-year cards,
+ * dashboard tiles) pick up the new state.
+ *
+ * Previously lived in Settings — moved here in phase 1.23 because tax-year
+ * state is tax-view content, not app preferences.
+ */
+async function renderSedManagementSection(yearsWithData, yearSettings) {
+  const page = el('section', { class: 'ledger-page' },
+    el('div', { class: 'ledger-page__heading' },
+      el('h2', {}, 'Per-year SED status'),
+    ),
+    el('p', { class: 'ledger-page__subtitle' },
+      'Override your default SED status for a specific year (e.g. a year you worked shore-side). Record your non-SED taxable income so the ledger can apportion CGT between basic and higher rate bands. Mark "Losses reported to HMRC" once you have filed Self Assessment for the year.'),
+  );
+
+  for (let i = 0; i < yearsWithData.length; i++) {
+    const year = yearsWithData[i];
+    const rec = yearSettings[year];
+    page.append(renderSedForm(year, rec));
+    if (i < yearsWithData.length - 1) {
+      page.append(el('div', { class: 'motif-divider' }, '∿'));
+    }
+  }
+
+  return page;
+}
+
+function renderSedForm(year, rec) {
+  const existing = rec || { year, sedStatus: null, nonSedTaxableIncome: 0, lossesReported: false };
+
+  const form = el('form', { style: { marginBottom: '1.5rem' } },
+    el('h3', { style: { fontSize: '1.1rem' } }, `Tax year ${year}`),
+    el('div', { class: 'form-row' },
+      el('div', { class: 'form-group' },
+        el('label', {}, 'SED claim status (override)'),
+        el('select', { id: `sed-status-${year}`, class: 'select' },
+          ...[
+            ['', 'Use default'],
+            ['pending', 'Pending'],
+            ['claimed', 'Claimed successfully'],
+            ['not-eligible', 'Not eligible this year'],
+          ].map(([v, label]) =>
+            el('option', { value: v, ...((existing.sedStatus || '') === v ? { selected: true } : {}) }, label)),
+        ),
+        el('p', { class: 'form-group__hint' },
+          'Leave as "Use default" unless this year is unusual.'),
+      ),
+      el('div', { class: 'form-group' },
+        el('label', {}, 'Non-SED taxable income (£)'),
+        el('input', { type: 'number', id: `sed-income-${year}`, class: 'input', step: 'any',
+          value: existing.nonSedTaxableIncome || 0 }),
+        el('p', { class: 'form-group__hint' },
+          'UK-taxable income this year after SED. Determines basic vs higher CGT band.'),
+      ),
+    ),
+    el('div', { class: 'form-group' },
+      el('label', {}, 'Losses reported to HMRC for this year?'),
+      el('select', { id: `sed-reported-${year}`, class: 'select' },
+        el('option', { value: 'true', ...(existing.lossesReported ? { selected: true } : {}) }, 'Yes'),
+        el('option', { value: 'false', ...(!existing.lossesReported ? { selected: true } : {}) }, 'No — need to file'),
+      ),
+      el('p', { class: 'form-group__hint' },
+        'Losses must be formally reported within 4 years to be usable for offset.'),
+    ),
+    el('button', { type: 'submit', class: 'button' }, `Save ${year}`),
+  );
+
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const sedChoice = form.querySelector(`#sed-status-${year}`).value;
+    const wasReported = (await get('taxYears', year))?.lossesReported || false;
+    const nowReported = form.querySelector(`#sed-reported-${year}`).value === 'true';
+    await put('taxYears', {
+      year,
+      sedStatus: sedChoice || null,  // null = use app-wide default
+      nonSedTaxableIncome: parseFloat(form.querySelector(`#sed-income-${year}`).value || '0'),
+      lossesReported: nowReported,
+    });
+    if (!wasReported && nowReported) {
+      toast(`${year} marked as filed with HMRC`);
+      setTimeout(() => location.reload(), 800);
+    } else {
+      toast(`Saved ${year}`);
+    }
+  });
+
+  return form;
 }
 
 function renderYearCard(year, data, settings, isCurrent, opts = {}) {
