@@ -31,10 +31,31 @@ async function initTheme() {
   const theme = saved || (prefersDark ? 'dark' : 'light');
   document.documentElement.dataset.theme = theme;
 
+  // Glyph + label reflect the action a tap would take, not the current state.
+  // Light mode shows moon ("go dark"). Dark mode shows sun ("go light").
+  // Helps the masthead read as actionable rather than ambiguous.
+  const refreshThemeIcon = () => {
+    const t = document.documentElement.dataset.theme;
+    const btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    const icon = btn.querySelector('.theme-toggle__icon');
+    if (t === 'dark') {
+      icon.textContent = '☀';
+      btn.setAttribute('aria-label', 'Switch to light mode');
+      btn.title = 'Switch to light mode';
+    } else {
+      icon.textContent = '☾';
+      btn.setAttribute('aria-label', 'Switch to dark mode');
+      btn.title = 'Switch to dark mode';
+    }
+  };
+  refreshThemeIcon();
+
   document.getElementById('theme-toggle').addEventListener('click', async () => {
     const current = document.documentElement.dataset.theme;
     const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
+    refreshThemeIcon();
     const s = (await get('settings', 'main')) || { id: 'main', createdAt: new Date().toISOString() };
     s.theme = next;
     await put('settings', s);
@@ -67,10 +88,16 @@ applyPrivacyToDom(localStorage.getItem(PRIVACY_KEY) === '1');
 function initPrivacyToggle() {
   const btn = document.getElementById('privacy-toggle');
   if (!btn) return;
+  const iconSpan = btn.querySelector('span[aria-hidden="true"]');
   const refresh = () => {
     const on = document.documentElement.dataset.privacy === 'on';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
-    btn.title = on ? 'Privacy mode on — click to show values' : 'Hide values';
+    // Glyph reflects what the button DOES — not the current state.
+    // Privacy OFF: open-circle ⊙ (means "tap to hide"). Privacy ON: slash
+    // through circle ⊘ (means "currently hidden, tap to reveal").
+    if (iconSpan) iconSpan.textContent = on ? '⊘' : '⊙';
+    btn.setAttribute('aria-label', on ? 'Show values' : 'Hide values');
+    btn.title = on ? 'Privacy mode on — tap to show values' : 'Hide values (privacy mode)';
   };
   refresh();
   btn.addEventListener('click', async () => {

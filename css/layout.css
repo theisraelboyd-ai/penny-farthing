@@ -674,21 +674,10 @@
 }
 .motif-divider::before, .motif-divider::after { content: none; }
 
-/* View header — accent underline + slightly more interest */
+/* View header — clean spacing without decorative underline */
 .view-header {
   margin-bottom: var(--space-5);
-  padding-bottom: var(--space-4);
-  position: relative;
-}
-.view-header::after {
-  content: '';
-  position: absolute;
-  left: 0;
-  bottom: 0;
-  width: 40px;
-  height: 2px;
-  background: linear-gradient(to right, var(--accent), transparent);
-  border-radius: 1px;
+  padding-bottom: var(--space-3);
 }
 .view-header h2 {
   font-size: 1.75rem;
@@ -919,6 +908,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.holding-card__sub-name { color: var(--text); }
+.holding-card__sub-sep,
+.holding-card__sub-account { color: var(--text-muted); }
 
 .holding-card__group {
   display: flex;

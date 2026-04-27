@@ -83,8 +83,11 @@ export async function renderHoldings(mount) {
     if (p) priceMap.set(h.asset.id, p);
   }
 
-  // Refresh controls + SED scenario toggle
-  const refreshBtn = el('button', { class: 'button' }, 'Refresh prices');
+  // Refresh controls + SED scenario toggle. Refresh is ghost-style — it's
+  // an occasional action, not the primary task on this page. The SED
+  // scenario chips are visually weighted higher because they affect the
+  // figures the user is reading.
+  const refreshBtn = el('button', { class: 'button button--ghost' }, 'Refresh prices');
   const refreshStatus = el('span', { class: 'text-faint', style: { fontSize: 'var(--f-sm)', marginLeft: 'var(--space-3)' } });
 
   // Scenario toggle — view-only (doesn't edit saved tax records)
@@ -416,7 +419,9 @@ function renderHoldingsCards(holdings, priceMap, sellNowResults, apiKey, onChang
         el('div', { class: 'holding-card__title' },
           el('div', { class: 'holding-card__ticker' }, h.asset.ticker || '—'),
           el('div', { class: 'holding-card__sub' },
-            `${h.asset.name || ''} · ${h.account.name}`),
+            el('span', { class: 'holding-card__sub-name' }, h.asset.name || ''),
+            el('span', { class: 'holding-card__sub-sep' }, ' — '),
+            el('span', { class: 'holding-card__sub-account' }, h.account.name)),
         ),
       ),
 
@@ -604,7 +609,7 @@ function renderHoldingsTable(holdings, priceMap, sellNowResults, apiKey, onChang
               el('div', {},
                 el('div', { style: { fontWeight: '500' } }, h.asset.ticker || '—'),
                 el('div', { class: 'text-faint', style: { fontSize: 'var(--f-xs)' } },
-                  `${h.asset.name || ''} · ${h.account.name}`),
+                  `${h.asset.name || ''} — ${h.account.name}`),
               ),
             ),
           ),
