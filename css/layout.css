@@ -1050,21 +1050,27 @@
   list-style: none;
   cursor: pointer;
   padding: var(--space-3);
-  background: var(--surface-2);
+  /* Filed years use a soft green wash to visually pair with the solid green
+     "✓ Filed" pill above. The whole row reads as one "completed" state. */
+  background: var(--gain-soft);
+  color: var(--gain);
   border-radius: var(--radius-sm);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: var(--space-3);
   font-size: var(--f-sm);
+  font-weight: 500;
   user-select: none;
 }
 .tax-year-details > summary.tax-year-details__summary::-webkit-details-marker {
   display: none;
 }
 .tax-year-details__hint {
-  color: var(--text-muted);
+  color: var(--gain);
+  opacity: 0.75;
   font-size: var(--f-xs);
+  font-weight: 400;
 }
 .tax-year-details[open] .tax-year-details__hint::before {
   content: 'Tap to collapse · ';
